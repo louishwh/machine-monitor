@@ -1,5 +1,6 @@
 mod config;
 mod client;
+mod collectors;
 
 use clap::{Parser, Subcommand};
 
