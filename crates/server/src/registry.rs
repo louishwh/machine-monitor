@@ -21,6 +21,15 @@ impl Registry {
     pub async fn online_ids(&self) -> Vec<String> {
         self.online.read().await.keys().cloned().collect()
     }
+    pub async fn mark_online_at(&self, id: &str, at: chrono::DateTime<chrono::Utc>) {
+        self.online.write().await.insert(id.to_string(), at);
+    }
+    pub async fn last_seen(&self, id: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.online.read().await.get(id).copied()
+    }
+    pub async fn snapshot(&self) -> Vec<(String, chrono::DateTime<chrono::Utc>)> {
+        self.online.read().await.iter().map(|(k, v)| (k.clone(), *v)).collect()
+    }
 }
 
 #[cfg(test)]

@@ -1,8 +1,4 @@
-mod config;
-mod db;
-mod store;
-mod registry;
-
-fn main() {
-    println!("fleetwatch-server placeholder");
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    fleetwatch_server::run().await
 }
