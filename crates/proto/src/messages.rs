@@ -26,6 +26,12 @@ pub enum ServerToAgent {
     Ping,
 }
 
+pub const STATUS_KINDS: &[&str] = &["host", "cpu", "mem", "disk", "net", "proc", "service"];
+
+pub fn is_known_status_kind(k: &str) -> bool {
+    STATUS_KINDS.contains(&k)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -46,5 +52,12 @@ mod tests {
     fn server_runstatus_tag_is_stable() {
         let s = serde_json::to_string(&ServerToAgent::Ping).unwrap();
         assert!(s.contains("ping"));
+    }
+
+    #[test]
+    fn known_status_kinds() {
+        assert!(is_known_status_kind("cpu"));
+        assert!(is_known_status_kind("service"));
+        assert!(!is_known_status_kind("rm-rf"));
     }
 }
