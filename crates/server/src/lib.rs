@@ -5,6 +5,7 @@ pub mod registry;
 pub mod agent_ws;
 pub mod api;
 pub mod sweeper;
+pub mod conn;
 
 use axum::{routing::get, Router};
 use sqlx::SqlitePool;
@@ -15,6 +16,7 @@ pub struct AppState {
     pub pool: SqlitePool,
     pub registry: registry::Registry,
     pub console_pubkey: Arc<Vec<u8>>,
+    pub conns: conn::Conns,
 }
 
 pub fn build_router(state: AppState) -> Router {
@@ -29,7 +31,7 @@ pub async fn run() -> anyhow::Result<()> {
     let cfg = config::ServerConfig::from_env_or_file()?;
     let pool = db::init_pool(&cfg.db_path).await?;
     let console_pubkey = Arc::new(cfg.console_public_key()?);
-    let state = AppState { pool, registry: registry::Registry::new(), console_pubkey };
+    let state = AppState { pool, registry: registry::Registry::new(), console_pubkey, conns: conn::Conns::new() };
     sweeper::spawn(state.clone());
     let app = build_router(state);
     let listener = tokio::net::TcpListener::bind(&cfg.bind).await?;
@@ -45,7 +47,7 @@ pub mod test_support {
     pub async fn spawn_test_server(pubkey_b64: String) -> String {
         let pool = db::init_pool_in_memory().await.unwrap();
         let console_pubkey = Arc::new(B64.decode(pubkey_b64).unwrap());
-        let state = AppState { pool, registry: registry::Registry::new(), console_pubkey };
+        let state = AppState { pool, registry: registry::Registry::new(), console_pubkey, conns: conn::Conns::new() };
         let app = build_router(state);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap().to_string();
