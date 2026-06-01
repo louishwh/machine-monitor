@@ -39,7 +39,7 @@ mod tests {
         };
         let s = serde_json::to_string(&msg).unwrap();
         let back: AgentToServer = serde_json::from_str(&s).unwrap();
-        matches!(back, AgentToServer::Hello { .. });
+        assert!(matches!(back, AgentToServer::Hello { ref hostname, .. } if hostname == "web-01"));
     }
 
     #[test]
