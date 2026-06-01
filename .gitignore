@@ -1,0 +1,11 @@
+# rust
+target/
+# node / frontend
+node_modules/
+dist/
+# secrets — console master signing key, never commit
+keys/
+*.private.key
+# os
+.DS_Store
+*.local
