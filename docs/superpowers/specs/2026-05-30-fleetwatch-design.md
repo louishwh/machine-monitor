@@ -84,7 +84,7 @@ Server → Agent：
 |---|---|
 | `machines` | id, name, hostname, os, agent_version, status(active/revoked), shell_enabled, last_seen, enrolled_at |
 | `revocations` | machine_id, revoked_at |
-| `status_snapshots` | machine_id, json, captured_at（留最新 + 小量历史） |
+| `status_snapshots` | machine_id, json, captured_at（保留最近 1 个月，定期清理任务删除过期） |
 | `command_log` | id, machine_id, kind(status/shell), request, exit, output, created_at |
 | `server_config` | console_public_key, pairing_token_hash, paired_at |
 
@@ -149,3 +149,25 @@ monitor/
 - 对开启 shell 权限的机器能下发任意命令并拿回输出，且全程审计。
 - 吊销某机器后其连接立即被拒。
 - 中心服务端无网页 UI、无匿名访问；唯一控制入口是 PC 管理端。
+
+## 13. 实现决策（已确认）
+
+| 项 | 决策 |
+|---|---|
+| 服务端部署 | 单二进制 + systemd 直跑 |
+| TLS | 反向代理（Caddy/Nginx）终止 TLS，服务端听本地明文 |
+| 数据库 | SQLite 起步 |
+| 身份令牌有效期 | 永久有效，靠吊销列表管理（无续签） |
+| 状态上报模式 | 心跳带轻量摘要 + 详情按需拉取 |
+| 状态历史保留 | 最近 1 个月，定期清理 |
+| shell 命令超时 | 默认 30 秒 |
+| 管理端网络 | 公网 TLS + 强凭证（主密钥签名鉴权） |
+| macOS 安装 | 系统级 LaunchDaemon |
+| 服务端端口 | 单端口不同路径：`/agent`(WS)、`/api`(控制面) |
+| 首批里程碑 | 先打通 agent↔server 上线链路（proto + hub + 反连 + 心跳 + 在线可见） |
+
+### v1 之后路线（优先级）
+1. 告警 / 通知（阈值触发）
+2. 指标时序图表
+3. apt 在线源（`apt-get install fleetwatch-agent`）
+4. agent 自动升级
