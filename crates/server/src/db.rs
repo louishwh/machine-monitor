@@ -17,6 +17,14 @@ CREATE TABLE IF NOT EXISTS machines (
 CREATE TABLE IF NOT EXISTS revocations (
   machine_id TEXT PRIMARY KEY, revoked_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS status_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  machine_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  json TEXT NOT NULL,
+  captured_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_snap_machine ON status_snapshots(machine_id, captured_at);
 "#;
 
 pub async fn init_pool(db_path: &str) -> anyhow::Result<SqlitePool> {
