@@ -4,6 +4,8 @@ import {
   generateMasterKey,
   getServerUrl,
   setServerUrl,
+  getServerCa,
+  setServerCa,
   pairServer,
   errMsg,
   type MasterStatus,
@@ -17,10 +19,13 @@ export default function ConnectPage() {
   const [status, setStatus] = useState<MasterStatus | null>(null);
   const [serverUrl, setServerUrlState] = useState("");
   const [savedUrl, setSavedUrl] = useState<string | null>(null);
+  const [caPem, setCaPemState] = useState("");
+  const [savedCa, setSavedCa] = useState<string | null>(null);
   const [pairingToken, setPairingToken] = useState("");
 
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [savingUrl, setSavingUrl] = useState(false);
+  const [savingCa, setSavingCa] = useState(false);
   const [generatingKey, setGeneratingKey] = useState(false);
   const [pairing, setPairing] = useState(false);
 
@@ -29,11 +34,16 @@ export default function ConnectPage() {
     Promise.all([
       masterStatus().catch(() => null),
       getServerUrl().catch(() => null),
-    ]).then(([ms, url]) => {
+      getServerCa().catch(() => null),
+    ]).then(([ms, url, ca]) => {
       if (ms) setStatus(ms);
       if (url) {
         setSavedUrl(url);
         setServerUrlState(url);
+      }
+      if (ca) {
+        setSavedCa(ca);
+        setCaPemState(ca);
       }
       setLoadingStatus(false);
     });
@@ -52,6 +62,20 @@ export default function ConnectPage() {
       toast("err", errMsg(e));
     } finally {
       setSavingUrl(false);
+    }
+  }
+
+  async function handleSaveCa() {
+    const trimmed = caPem.trim();
+    setSavingCa(true);
+    try {
+      await setServerCa(trimmed);
+      setSavedCa(trimmed || null);
+      toast("ok", trimmed ? "CA 证书已保存" : "CA 证书已清除");
+    } catch (e) {
+      toast("err", errMsg(e));
+    } finally {
+      setSavingCa(false);
     }
   }
 
@@ -128,6 +152,34 @@ export default function ConnectPage() {
             ✓ 当前: <span className="font-mono">{savedUrl}</span>
           </p>
         )}
+      </div>
+
+      {/* ── Server CA (self-signed TLS) ──────────────────────────────── */}
+      <div className="card p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-slate-300">服务器证书 (CA PEM)</h3>
+        <p className="text-xs text-slate-500">
+          若服务端使用自签名 TLS，请粘贴服务端证书的 PEM 内容（<code>-----BEGIN CERTIFICATE-----…</code>）。
+          留空则使用系统信任库（适用于 http:// 或受系统信任的 https://）。
+        </p>
+        <textarea
+          className="input w-full font-mono text-xs"
+          rows={6}
+          placeholder={"-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----"}
+          value={caPem}
+          onChange={(e) => setCaPemState(e.target.value)}
+        />
+        <div className="flex items-center gap-3">
+          <button
+            className="btn-primary whitespace-nowrap"
+            onClick={handleSaveCa}
+            disabled={savingCa}
+          >
+            {savingCa ? <Spinner /> : "保存证书"}
+          </button>
+          {savedCa && (
+            <span className="text-xs text-emerald-400">✓ CA 证书已配置</span>
+          )}
+        </div>
       </div>
 
       {/* ── Master Key ───────────────────────────────────────────────── */}

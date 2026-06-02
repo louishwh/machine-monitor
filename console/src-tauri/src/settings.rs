@@ -7,6 +7,7 @@ use crate::error::{AppError, AppResult};
 
 const SERVICE: &str = "com.fleetwatch.console";
 const SERVER_URL_USER: &str = "server_url";
+const SERVER_CA_USER: &str = "server_ca";
 
 fn entry(user: &str) -> AppResult<Entry> {
     Ok(Entry::new(SERVICE, user)?)
@@ -29,6 +30,23 @@ pub fn require_server_url() -> AppResult<String> {
     get_server_url()?.ok_or(AppError::NoServerUrl)
 }
 
+// ──────────────────────────── server_ca ──────────────────────────────────
+
+/// Retrieve the stored server CA PEM (if any).
+pub fn get_server_ca() -> AppResult<Option<String>> {
+    match entry(SERVER_CA_USER)?.get_password() {
+        Ok(v) => Ok(Some(v)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(AppError::Keyring(e.to_string())),
+    }
+}
+
+/// Persist the server CA PEM string in the keychain.
+pub fn set_server_ca(pem: &str) -> AppResult<()> {
+    entry(SERVER_CA_USER)?.set_password(pem)?;
+    Ok(())
+}
+
 // ──────────────────────────── Tauri commands ────────────────────────────
 
 #[tauri::command]
@@ -39,4 +57,14 @@ pub fn get_server_url_cmd() -> Result<Option<String>, crate::error::AppError> {
 #[tauri::command]
 pub fn set_server_url_cmd(url: String) -> Result<(), crate::error::AppError> {
     set_server_url(&url)
+}
+
+#[tauri::command]
+pub fn get_server_ca_cmd() -> Result<Option<String>, crate::error::AppError> {
+    get_server_ca()
+}
+
+#[tauri::command]
+pub fn set_server_ca_cmd(pem: String) -> Result<(), crate::error::AppError> {
+    set_server_ca(&pem)
 }

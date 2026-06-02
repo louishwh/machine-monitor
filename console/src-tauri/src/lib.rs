@@ -14,6 +14,9 @@ pub fn run() {
             // Task 8 — settings
             settings::get_server_url_cmd,
             settings::set_server_url_cmd,
+            // M6 — server CA (self-signed TLS)
+            settings::get_server_ca_cmd,
+            settings::set_server_ca_cmd,
             // Task 8 — control plane
             commands::pair_server,
             commands::issue_machine,

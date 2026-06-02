@@ -60,6 +60,12 @@ export const getServerUrl = () =>
 export const setServerUrl = (url: string) =>
   invoke<void>("set_server_url_cmd", { url });
 
+export const getServerCa = () =>
+  invoke<string | null>("get_server_ca_cmd");
+
+export const setServerCa = (pem: string) =>
+  invoke<void>("set_server_ca_cmd", { pem });
+
 // ─── Pairing commands ─────────────────────────────────────────────────────────
 
 /** Pair the console with the server using a one-time pairing token. */

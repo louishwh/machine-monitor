@@ -17,15 +17,39 @@ use serde_json::Value;
 
 use crate::error::{AppError, AppResult};
 
+/// Build a reqwest client.
+///
+/// When `ca_pem` is `Some`, the PEM-encoded certificate is added as a trusted
+/// root so that HTTPS connections to a self-signed server succeed.  When
+/// `None`, the system trust store is used (plain http:// or system-trusted
+/// https:// both work without a CA).
+pub fn build_client(ca_pem: Option<&str>) -> AppResult<reqwest::Client> {
+    let mut builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(40));
+    if let Some(pem) = ca_pem {
+        let cert = reqwest::Certificate::from_pem(pem.as_bytes())
+            .map_err(|e| AppError::Other(format!("无效的 CA PEM: {e}")))?;
+        builder = builder.add_root_certificate(cert);
+    }
+    builder
+        .build()
+        .map_err(|e| AppError::Other(format!("无法构建 HTTP 客户端: {e}")))
+}
+
 /// `POST {server}/api/pair` with `{pairing_token, console_public_key_b64}`.
-pub async fn pair(server: &str, pairing_token: &str, console_pubkey_b64: &str) -> AppResult<()> {
+pub async fn pair(
+    server: &str,
+    pairing_token: &str,
+    console_pubkey_b64: &str,
+    ca_pem: Option<&str>,
+) -> AppResult<()> {
     let url = format!("{server}/api/pair");
     let body = serde_json::json!({
         "pairing_token": pairing_token,
         "console_public_key_b64": console_pubkey_b64,
     });
 
-    let client = reqwest::Client::new();
+    let client = build_client(ca_pem)?;
     let resp = client.post(&url).json(&body).send().await?;
 
     if resp.status().is_success() {
@@ -45,7 +69,12 @@ pub async fn pair(server: &str, pairing_token: &str, console_pubkey_b64: &str) -
 /// `path` should be the full path including any query string, e.g.
 /// `/api/machines/abc/status?kind=host`.  The function splits the query off
 /// before signing so the header carries only the signed path component.
-pub async fn signed_get(server: &str, path: &str, sk: &SigningKey) -> AppResult<Value> {
+pub async fn signed_get(
+    server: &str,
+    path: &str,
+    sk: &SigningKey,
+    ca_pem: Option<&str>,
+) -> AppResult<Value> {
     // Split path from query string; sign only the path component.
     let (sign_path, _query) = path.split_once('?').unwrap_or((path, ""));
 
@@ -53,7 +82,7 @@ pub async fn signed_get(server: &str, path: &str, sk: &SigningKey) -> AppResult<
     let sig = fw_proto::auth::sign_request(sk, "GET", sign_path, &ts, b"");
 
     let url = format!("{server}{path}");
-    let client = reqwest::Client::new();
+    let client = build_client(ca_pem)?;
     let resp = client
         .get(&url)
         .header("x-fw-timestamp", &ts)
@@ -80,6 +109,7 @@ pub async fn signed_post(
     path: &str,
     body: &Value,
     sk: &SigningKey,
+    ca_pem: Option<&str>,
 ) -> AppResult<Value> {
     let body_str = serde_json::to_string(body)
         .map_err(|e| AppError::Other(e.to_string()))?;
@@ -89,7 +119,7 @@ pub async fn signed_post(
     let sig = fw_proto::auth::sign_request(sk, "POST", path, &ts, body_bytes);
 
     let url = format!("{server}{path}");
-    let client = reqwest::Client::new();
+    let client = build_client(ca_pem)?;
     let resp = client
         .post(&url)
         .header("x-fw-timestamp", &ts)
@@ -116,6 +146,7 @@ pub async fn signed_patch(
     path: &str,
     body: &Value,
     sk: &SigningKey,
+    ca_pem: Option<&str>,
 ) -> AppResult<Value> {
     let body_str = serde_json::to_string(body)
         .map_err(|e| AppError::Other(e.to_string()))?;
@@ -125,7 +156,7 @@ pub async fn signed_patch(
     let sig = fw_proto::auth::sign_request(sk, "PATCH", path, &ts, body_bytes);
 
     let url = format!("{server}{path}");
-    let client = reqwest::Client::new();
+    let client = build_client(ca_pem)?;
     let resp = client
         .patch(&url)
         .header("x-fw-timestamp", &ts)

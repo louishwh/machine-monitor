@@ -21,7 +21,8 @@ use crate::{
 pub async fn pair_server(pairing_token: String) -> Result<(), AppError> {
     let server = settings::require_server_url()?;
     let pk_b64 = master_key::public_key_b64()?.ok_or(AppError::NoMasterKey)?;
-    api_client::pair(&server, &pairing_token, &pk_b64).await
+    let ca = settings::get_server_ca()?;
+    api_client::pair(&server, &pairing_token, &pk_b64, ca.as_deref()).await
 }
 
 // ─────────────────────────── issue_machine ──────────────────────────────
@@ -64,7 +65,8 @@ pub fn issue_machine(name: String) -> Result<IssuedMachine, AppError> {
 pub async fn list_machines() -> Result<Value, AppError> {
     let server = settings::require_server_url()?;
     let sk = master_key::load()?;
-    api_client::signed_get(&server, "/api/machines", &sk).await
+    let ca = settings::get_server_ca()?;
+    api_client::signed_get(&server, "/api/machines", &sk, ca.as_deref()).await
 }
 
 // ─────────────────────────── machine_status ─────────────────────────────
@@ -74,9 +76,10 @@ pub async fn list_machines() -> Result<Value, AppError> {
 pub async fn machine_status(id: String, kind: String) -> Result<Value, AppError> {
     let server = settings::require_server_url()?;
     let sk = master_key::load()?;
+    let ca = settings::get_server_ca()?;
     // Path with query for the actual request; signed_get strips the query before signing.
     let path = format!("/api/machines/{id}/status?kind={kind}");
-    api_client::signed_get(&server, &path, &sk).await
+    api_client::signed_get(&server, &path, &sk, ca.as_deref()).await
 }
 
 // ─────────────────────────── machine_snapshots ──────────────────────────
@@ -86,8 +89,9 @@ pub async fn machine_status(id: String, kind: String) -> Result<Value, AppError>
 pub async fn machine_snapshots(id: String) -> Result<Value, AppError> {
     let server = settings::require_server_url()?;
     let sk = master_key::load()?;
+    let ca = settings::get_server_ca()?;
     let path = format!("/api/machines/{id}/snapshots");
-    api_client::signed_get(&server, &path, &sk).await
+    api_client::signed_get(&server, &path, &sk, ca.as_deref()).await
 }
 
 // ─────────────────────────── set_shell ──────────────────────────────────────
@@ -98,9 +102,10 @@ pub async fn machine_snapshots(id: String) -> Result<Value, AppError> {
 pub async fn set_shell(id: String, enabled: bool) -> Result<Value, AppError> {
     let server = settings::require_server_url()?;
     let sk = master_key::load()?;
+    let ca = settings::get_server_ca()?;
     let path = format!("/api/machines/{id}/shell");
     let body = serde_json::json!({ "enabled": enabled });
-    api_client::signed_patch(&server, &path, &body, &sk).await
+    api_client::signed_patch(&server, &path, &body, &sk, ca.as_deref()).await
 }
 
 // ─────────────────────────── run_shell ──────────────────────────────────────
@@ -111,9 +116,10 @@ pub async fn set_shell(id: String, enabled: bool) -> Result<Value, AppError> {
 pub async fn run_shell(id: String, command: String) -> Result<Value, AppError> {
     let server = settings::require_server_url()?;
     let sk = master_key::load()?;
+    let ca = settings::get_server_ca()?;
     let path = format!("/api/machines/{id}/run-shell");
     let body = serde_json::json!({ "command": command });
-    api_client::signed_post(&server, &path, &body, &sk).await
+    api_client::signed_post(&server, &path, &body, &sk, ca.as_deref()).await
 }
 
 // ─────────────────────────── revoke_machine ─────────────────────────────────
@@ -124,9 +130,10 @@ pub async fn run_shell(id: String, command: String) -> Result<Value, AppError> {
 pub async fn revoke_machine(id: String) -> Result<Value, AppError> {
     let server = settings::require_server_url()?;
     let sk = master_key::load()?;
+    let ca = settings::get_server_ca()?;
     let path = format!("/api/machines/{id}/revoke");
     let body = serde_json::json!({});
-    api_client::signed_post(&server, &path, &body, &sk).await
+    api_client::signed_post(&server, &path, &body, &sk, ca.as_deref()).await
 }
 
 // ─────────────────────────── audit ──────────────────────────────────────────
@@ -137,11 +144,12 @@ pub async fn revoke_machine(id: String) -> Result<Value, AppError> {
 pub async fn audit(machine_id: Option<String>) -> Result<Value, AppError> {
     let server = settings::require_server_url()?;
     let sk = master_key::load()?;
+    let ca = settings::get_server_ca()?;
     let path = match &machine_id {
         Some(mid) => format!("/api/audit?machine_id={mid}&limit=100"),
         None => "/api/audit?limit=100".to_string(),
     };
-    api_client::signed_get(&server, &path, &sk).await
+    api_client::signed_get(&server, &path, &sk, ca.as_deref()).await
 }
 
 // ─────────────────────────── Tests ──────────────────────────────────────
