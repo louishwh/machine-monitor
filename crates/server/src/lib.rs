@@ -5,11 +5,12 @@ pub mod registry;
 pub mod agent_ws;
 pub mod api;
 pub mod pair;
+pub mod auth;
 pub mod sweeper;
 pub mod conn;
 pub mod dispatch;
 
-use axum::{routing::{get, post}, Router};
+use axum::{middleware, routing::{get, post}, Router};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -24,13 +25,26 @@ pub struct AppState {
 }
 
 pub fn build_router(state: AppState) -> Router {
-    Router::new()
-        .route("/agent", get(agent_ws::handler))
-        .route("/api/pair", post(pair::pair))
+    // Build the console-signature auth middleware layer.
+    let sig_layer = middleware::from_fn_with_state(state.clone(), auth::require_console_sig);
+
+    // Control-plane routes — layered with signature auth before merging.
+    // The sub-router gets its own with_state so that route-scoped layers
+    // (added via .layer before .with_state) stay bound to these routes only
+    // when the two routers are merged in axum 0.8.
+    let protected = Router::new()
         .route("/api/machines", get(api::list_machines))
         .route("/api/machines/{id}/status", get(api::get_machine_status))
         .route("/api/machines/{id}/snapshots", get(api::list_machine_snapshots))
+        .layer(sig_layer)
+        .with_state(state.clone());
+
+    // Unauthenticated routes — agent WebSocket and one-time pairing.
+    Router::new()
+        .route("/agent", get(agent_ws::handler))
+        .route("/api/pair", post(pair::pair))
         .with_state(state)
+        .merge(protected)
 }
 
 pub async fn run() -> anyhow::Result<()> {

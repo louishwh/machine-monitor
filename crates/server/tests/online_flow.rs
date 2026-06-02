@@ -1,8 +1,19 @@
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use fw_proto::token::{sign_identity, IdentityPayload};
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message;
+
+/// Build a signed GET request for control-plane endpoints.
+fn signed_get(sk: &SigningKey, addr: &str, path: &str) -> reqwest::RequestBuilder {
+    let ts = Utc::now().to_rfc3339();
+    let sig = fw_proto::auth::sign_request(sk, "GET", path, &ts, b"");
+    reqwest::Client::new()
+        .get(format!("http://{addr}{path}"))
+        .header("x-fw-timestamp", &ts)
+        .header("x-fw-signature", &sig)
+}
 
 #[tokio::test]
 async fn agent_hello_marks_machine_online() {
@@ -33,11 +44,14 @@ async fn agent_hello_marks_machine_online() {
     let reply = ws.next().await.unwrap().unwrap();
     assert!(reply.into_text().unwrap().contains("hello_ack"));
 
-    // Query /api/machines - should see online: true
-    let body: serde_json::Value = reqwest::get(format!("http://{addr}/api/machines"))
-        .await.unwrap()
+    // Query /api/machines — must be signed
+    let body: serde_json::Value = signed_get(&sk, &addr, "/api/machines")
+        .send()
+        .await
+        .unwrap()
         .json()
-        .await.unwrap();
+        .await
+        .unwrap();
     let arr = body.as_array().unwrap();
     assert_eq!(arr.len(), 1);
     assert_eq!(arr[0]["online"], true);

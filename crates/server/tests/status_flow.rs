@@ -6,15 +6,34 @@
 ///   3. The fake agent listens for `RunStatus{kind:"host"}` and replies with a
 ///      canned `CommandResult` containing `{"hostname":"web-01"}`.
 ///   4. Meanwhile, call `GET /api/machines/:id/status?kind=host` from an HTTP
-///      client and assert the response JSON contains `hostname == "web-01"`.
+///      client (signed with the console key) and assert the response JSON
+///      contains `hostname == "web-01"`.
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use fw_proto::token::{sign_identity, IdentityPayload};
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message;
 
 const MACHINE_ID: &str = "m-status-1";
+
+/// Build a signed GET request for control-plane endpoints.
+/// The path must be the exact path the server sees (no query string).
+fn signed_get(sk: &SigningKey, addr: &str, path: &str, query: &str) -> reqwest::RequestBuilder {
+    let ts = Utc::now().to_rfc3339();
+    // Sign path without query string — server verifies against uri.path()
+    let sig = fw_proto::auth::sign_request(sk, "GET", path, &ts, b"");
+    let url = if query.is_empty() {
+        format!("http://{addr}{path}")
+    } else {
+        format!("http://{addr}{path}?{query}")
+    };
+    reqwest::Client::new()
+        .get(url)
+        .header("x-fw-timestamp", &ts)
+        .header("x-fw-signature", &sig)
+}
 
 #[tokio::test]
 async fn status_flow_round_trip() {
@@ -81,15 +100,15 @@ async fn status_flow_round_trip() {
     // HelloAck is sent, so by the time we reach here it's already done).
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
-    // --- call GET /api/machines/:id/status?kind=host ---
-    let resp: serde_json::Value = reqwest::get(format!(
-        "http://{addr}/api/machines/{MACHINE_ID}/status?kind=host"
-    ))
-    .await
-    .unwrap()
-    .json()
-    .await
-    .unwrap();
+    // --- call GET /api/machines/:id/status?kind=host (signed) ---
+    let path = format!("/api/machines/{MACHINE_ID}/status");
+    let resp: serde_json::Value = signed_get(&sk, &addr, &path, "kind=host")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
 
     assert_eq!(
         resp["hostname"].as_str().unwrap_or(""),
@@ -106,12 +125,12 @@ async fn status_unknown_kind_returns_400() {
     let pubkey_b64 = B64.encode(sk.verifying_key().as_bytes());
     let addr = fleetwatch_server::test_support::spawn_test_server(pubkey_b64).await;
 
-    let status = reqwest::get(format!(
-        "http://{addr}/api/machines/anything/status?kind=badkind"
-    ))
-    .await
-    .unwrap()
-    .status();
+    let path = "/api/machines/anything/status";
+    let status = signed_get(&sk, &addr, path, "kind=badkind")
+        .send()
+        .await
+        .unwrap()
+        .status();
     assert_eq!(status.as_u16(), 400, "expected 400 for unknown kind");
 }
 
@@ -121,12 +140,9 @@ async fn status_offline_machine_returns_error() {
     let pubkey_b64 = B64.encode(sk.verifying_key().as_bytes());
     let addr = fleetwatch_server::test_support::spawn_test_server(pubkey_b64).await;
 
-    let status = reqwest::Client::new()
-        .get(format!(
-            "http://{addr}/api/machines/ghost/status?kind=host"
-        ))
+    let path = "/api/machines/ghost/status";
+    let status = signed_get(&sk, &addr, path, "kind=host")
         // Use a short timeout to avoid waiting 30s for the real dispatch timeout.
-        // The dispatch should fail immediately (no connection), so this is ample.
         .timeout(std::time::Duration::from_secs(5))
         .send()
         .await
