@@ -4,11 +4,12 @@ pub mod store;
 pub mod registry;
 pub mod agent_ws;
 pub mod api;
+pub mod pair;
 pub mod sweeper;
 pub mod conn;
 pub mod dispatch;
 
-use axum::{routing::get, Router};
+use axum::{routing::{get, post}, Router};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -19,11 +20,13 @@ pub struct AppState {
     pub registry: registry::Registry,
     pub console_pubkey: Arc<RwLock<Option<Vec<u8>>>>,
     pub conns: conn::Conns,
+    pub pairing_token: Arc<String>,
 }
 
 pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/agent", get(agent_ws::handler))
+        .route("/api/pair", post(pair::pair))
         .route("/api/machines", get(api::list_machines))
         .route("/api/machines/{id}/status", get(api::get_machine_status))
         .route("/api/machines/{id}/snapshots", get(api::list_machine_snapshots))
@@ -43,8 +46,15 @@ pub async fn run() -> anyhow::Result<()> {
         None
     };
     let console_pubkey = Arc::new(RwLock::new(pubkey_bytes));
+    let pairing_token = Arc::new(cfg.pairing_token.clone());
 
-    let state = AppState { pool, registry: registry::Registry::new(), console_pubkey, conns: conn::Conns::new() };
+    let state = AppState {
+        pool,
+        registry: registry::Registry::new(),
+        console_pubkey,
+        conns: conn::Conns::new(),
+        pairing_token,
+    };
     sweeper::spawn(state.clone());
     let app = build_router(state);
     let listener = tokio::net::TcpListener::bind(&cfg.bind).await?;
@@ -60,11 +70,41 @@ pub mod test_support {
     /// Spin up a test server pre-seeded with the given console public key
     /// (base64-encoded). Existing M1/M2 integration tests pass this so that
     /// the server starts in "paired" state and agent identity verification works.
+    /// Both the in-memory RwLock and the DB are seeded so `is_paired()` returns true.
     pub async fn spawn_test_server(pubkey_b64: String) -> String {
         let pool = db::init_pool_in_memory().await.unwrap();
+        // Seed the DB so store::is_paired() returns true.
+        store::set_console_pubkey(&pool, &pubkey_b64).await.unwrap();
         let decoded = B64.decode(&pubkey_b64).unwrap();
         let console_pubkey = Arc::new(RwLock::new(Some(decoded)));
-        let state = AppState { pool, registry: registry::Registry::new(), console_pubkey, conns: conn::Conns::new() };
+        let pairing_token = Arc::new("unused-in-paired-mode".to_string());
+        let state = AppState {
+            pool,
+            registry: registry::Registry::new(),
+            console_pubkey,
+            conns: conn::Conns::new(),
+            pairing_token,
+        };
+        let app = build_router(state);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+        addr
+    }
+
+    /// Spin up an unpaired test server (no console pubkey seeded).
+    /// The given `pairing_token` is the secret that must be presented to `/api/pair`.
+    pub async fn spawn_unpaired(pairing_token: String) -> String {
+        let pool = db::init_pool_in_memory().await.unwrap();
+        let console_pubkey = Arc::new(RwLock::new(None));
+        let pairing_token = Arc::new(pairing_token);
+        let state = AppState {
+            pool,
+            registry: registry::Registry::new(),
+            console_pubkey,
+            conns: conn::Conns::new(),
+            pairing_token,
+        };
         let app = build_router(state);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap().to_string();

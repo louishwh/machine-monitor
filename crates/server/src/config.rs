@@ -7,6 +7,14 @@ pub struct ServerConfig {
     /// 管理端公钥（信任锚），首次配对后由 console 注册；M1 先从配置读
     pub console_public_key_b64: String,
     pub db_path: String,
+    /// One-time secret token the console must present to complete pairing.
+    #[serde(default = "default_pairing_token")]
+    pub pairing_token: String,
+}
+
+fn default_pairing_token() -> String {
+    // Intentionally a placeholder — production deployments must set this explicitly.
+    "changeme".into()
 }
 
 impl ServerConfig {
@@ -33,6 +41,7 @@ mod tests {
             console_public_key_b64: base64::engine::general_purpose::STANDARD
                 .encode([9u8; 32]),
             db_path: "/tmp/fw.db".into(),
+            pairing_token: "test-token".into(),
         };
         let key = cfg.console_public_key().unwrap();
         assert_eq!(key.len(), 32);
