@@ -30,6 +30,16 @@ CREATE TABLE IF NOT EXISTS server_config (
   console_public_key TEXT,
   paired_at TEXT
 );
+CREATE TABLE IF NOT EXISTS command_log (
+  id TEXT PRIMARY KEY,
+  machine_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  request TEXT NOT NULL,
+  exit INTEGER,
+  output TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cmd_log_machine ON command_log(machine_id, created_at);
 "#;
 
 pub async fn init_pool(db_path: &str) -> anyhow::Result<SqlitePool> {

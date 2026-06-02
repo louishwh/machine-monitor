@@ -133,6 +133,124 @@ pub async fn is_paired(pool: &SqlitePool) -> anyhow::Result<bool> {
     Ok(key.is_some())
 }
 
+// ── shell toggle ─────────────────────────────────────────────────────────────
+
+/// Set `shell_enabled` for a machine. The machine row must already exist.
+pub async fn set_shell_enabled(pool: &SqlitePool, id: &str, enabled: bool) -> anyhow::Result<()> {
+    let val: i64 = if enabled { 1 } else { 0 };
+    sqlx::query("UPDATE machines SET shell_enabled=? WHERE id=?")
+        .bind(val).bind(id).execute(pool).await?;
+    Ok(())
+}
+
+/// Returns `true` if `shell_enabled` is non-zero for the given machine.
+/// Returns `false` if the machine does not exist.
+pub async fn get_shell_enabled(pool: &SqlitePool, id: &str) -> anyhow::Result<bool> {
+    let val: Option<i64> = sqlx::query_scalar(
+        "SELECT shell_enabled FROM machines WHERE id=?",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(val.unwrap_or(0) != 0)
+}
+
+// ── command log ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct CommandLogEntry {
+    pub id: String,
+    pub machine_id: String,
+    pub kind: String,
+    pub request: String,
+    pub exit: Option<i64>,
+    pub output: String,
+    pub created_at: String,
+}
+
+/// Insert a `CommandLogEntry` into the `command_log` table.
+pub async fn log_command(pool: &SqlitePool, entry: &CommandLogEntry) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT INTO command_log (id, machine_id, kind, request, exit, output, created_at)
+         VALUES (?,?,?,?,?,?,?)",
+    )
+    .bind(&entry.id)
+    .bind(&entry.machine_id)
+    .bind(&entry.kind)
+    .bind(&entry.request)
+    .bind(entry.exit)
+    .bind(&entry.output)
+    .bind(&entry.created_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+// ── audit ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, serde::Serialize)]
+pub struct AuditRow {
+    pub id: String,
+    pub machine_id: String,
+    pub kind: String,
+    pub request: String,
+    pub exit: Option<i64>,
+    pub output: String,
+    pub created_at: String,
+}
+
+/// List audit rows from `command_log`, optionally filtered by machine.
+/// Results are ordered newest-first. `limit` caps the result set.
+pub async fn list_audit(
+    pool: &SqlitePool,
+    machine_id: Option<&str>,
+    limit: i64,
+) -> anyhow::Result<Vec<AuditRow>> {
+    let rows = if let Some(mid) = machine_id {
+        sqlx::query(
+            "SELECT id, machine_id, kind, request, exit, output, created_at
+             FROM command_log WHERE machine_id=?
+             ORDER BY created_at DESC LIMIT ?",
+        )
+        .bind(mid)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query(
+            "SELECT id, machine_id, kind, request, exit, output, created_at
+             FROM command_log ORDER BY created_at DESC LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await?
+    };
+    Ok(rows.into_iter().map(|r| AuditRow {
+        id: r.get("id"),
+        machine_id: r.get("machine_id"),
+        kind: r.get("kind"),
+        request: r.get("request"),
+        exit: r.get("exit"),
+        output: r.get("output"),
+        created_at: r.get("created_at"),
+    }).collect())
+}
+
+// ── revocation helpers ────────────────────────────────────────────────────────
+
+/// Add a revocation entry (idempotent — INSERT OR IGNORE).
+pub async fn add_revocation(pool: &SqlitePool, id: &str) -> anyhow::Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT OR IGNORE INTO revocations (machine_id, revoked_at) VALUES (?,?)",
+    )
+    .bind(id)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Delete snapshots older than `days` days. Returns count of deleted rows.
 pub async fn purge_old_snapshots(pool: &SqlitePool, days: i64) -> anyhow::Result<u64> {
     let cutoff = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
@@ -148,6 +266,66 @@ pub async fn purge_old_snapshots(pool: &SqlitePool, days: i64) -> anyhow::Result
 mod tests {
     use super::*;
     use crate::db;
+
+    #[tokio::test]
+    async fn shell_toggle_and_audit() {
+        let pool = db::init_pool_in_memory().await.unwrap();
+
+        // Upsert a machine first (shell_enabled defaults to 0).
+        upsert_machine(&pool, "m-shell", "shell-box", "host", "linux", "1.0.0")
+            .await.unwrap();
+
+        // Default: shell_enabled = false
+        assert!(!get_shell_enabled(&pool, "m-shell").await.unwrap());
+
+        // Enable shell
+        set_shell_enabled(&pool, "m-shell", true).await.unwrap();
+        assert!(get_shell_enabled(&pool, "m-shell").await.unwrap());
+
+        // Disable again
+        set_shell_enabled(&pool, "m-shell", false).await.unwrap();
+        assert!(!get_shell_enabled(&pool, "m-shell").await.unwrap());
+
+        // Re-enable for audit log test
+        set_shell_enabled(&pool, "m-shell", true).await.unwrap();
+
+        // Log two command entries
+        let e1 = CommandLogEntry {
+            id: "cmd-1".into(),
+            machine_id: "m-shell".into(),
+            kind: "run".into(),
+            request: "ls /".into(),
+            exit: Some(0),
+            output: "bin etc".into(),
+            created_at: "2026-06-02T10:00:00Z".into(),
+        };
+        let e2 = CommandLogEntry {
+            id: "cmd-2".into(),
+            machine_id: "m-shell".into(),
+            kind: "run".into(),
+            request: "whoami".into(),
+            exit: Some(0),
+            output: "root".into(),
+            created_at: "2026-06-02T10:00:01Z".into(),
+        };
+        log_command(&pool, &e1).await.unwrap();
+        log_command(&pool, &e2).await.unwrap();
+
+        // list_audit returns 2 entries, newest first
+        let rows = list_audit(&pool, Some("m-shell"), 100).await.unwrap();
+        assert_eq!(rows.len(), 2, "expected 2 audit rows");
+        assert_eq!(rows[0].id, "cmd-2", "expected newest first");
+        assert_eq!(rows[1].id, "cmd-1");
+
+        // add_revocation + is_revoked
+        assert!(!is_revoked(&pool, "m-shell").await.unwrap());
+        add_revocation(&pool, "m-shell").await.unwrap();
+        assert!(is_revoked(&pool, "m-shell").await.unwrap());
+
+        // Idempotent — second call must not error
+        add_revocation(&pool, "m-shell").await.unwrap();
+        assert!(is_revoked(&pool, "m-shell").await.unwrap());
+    }
 
     #[tokio::test]
     async fn upsert_and_list_machine() {
