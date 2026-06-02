@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS status_snapshots (
   captured_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_snap_machine ON status_snapshots(machine_id, captured_at);
+CREATE TABLE IF NOT EXISTS server_config (
+  id INTEGER PRIMARY KEY CHECK (id=1),
+  console_public_key TEXT,
+  paired_at TEXT
+);
 "#;
 
 pub async fn init_pool(db_path: &str) -> anyhow::Result<SqlitePool> {
@@ -47,5 +52,8 @@ pub async fn run_migrations(pool: &SqlitePool) -> anyhow::Result<()> {
         let s = stmt.trim();
         if !s.is_empty() { sqlx::query(s).execute(pool).await?; }
     }
+    // Ensure the singleton server_config row always exists.
+    sqlx::query("INSERT OR IGNORE INTO server_config (id) VALUES (1)")
+        .execute(pool).await?;
     Ok(())
 }

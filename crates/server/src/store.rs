@@ -106,6 +106,33 @@ pub async fn list_snapshots(
     }).collect())
 }
 
+// ── console pairing ──────────────────────────────────────────────────────────
+
+/// Returns the stored base64-encoded console public key, or `None` if not yet paired.
+pub async fn get_console_pubkey(pool: &SqlitePool) -> anyhow::Result<Option<String>> {
+    let row = sqlx::query("SELECT console_public_key FROM server_config WHERE id=1")
+        .fetch_one(pool).await?;
+    Ok(row.get::<Option<String>, _>("console_public_key"))
+}
+
+/// Store the console public key (base64) and record the pairing timestamp.
+pub async fn set_console_pubkey(pool: &SqlitePool, pubkey_b64: &str) -> anyhow::Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "UPDATE server_config SET console_public_key=?, paired_at=? WHERE id=1",
+    )
+    .bind(pubkey_b64)
+    .bind(&now)
+    .execute(pool).await?;
+    Ok(())
+}
+
+/// Returns `true` if a console public key has been registered (server is paired).
+pub async fn is_paired(pool: &SqlitePool) -> anyhow::Result<bool> {
+    let key = get_console_pubkey(pool).await?;
+    Ok(key.is_some())
+}
+
 /// Delete snapshots older than `days` days. Returns count of deleted rows.
 pub async fn purge_old_snapshots(pool: &SqlitePool, days: i64) -> anyhow::Result<u64> {
     let cutoff = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
@@ -133,6 +160,23 @@ mod tests {
         // re-upsert updates, not duplicates
         upsert_machine(&pool, "m-1", "web-01b", "h", "ubuntu", "0.1.0").await.unwrap();
         assert_eq!(list_machines(&pool).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn pairing_state() {
+        let pool = db::init_pool_in_memory().await.unwrap();
+
+        // Initially unpaired
+        assert!(!is_paired(&pool).await.unwrap(), "should start unpaired");
+        assert!(get_console_pubkey(&pool).await.unwrap().is_none());
+
+        // Set a key
+        set_console_pubkey(&pool, "dGVzdGtleQ==").await.unwrap();
+
+        // Now paired
+        assert!(is_paired(&pool).await.unwrap(), "should be paired after set");
+        let key = get_console_pubkey(&pool).await.unwrap();
+        assert_eq!(key.as_deref(), Some("dGVzdGtleQ=="));
     }
 
     #[tokio::test]
