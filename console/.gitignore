@@ -1,0 +1,14 @@
+# node / frontend
+node_modules/
+dist/
+
+# rust build artifacts
+src-tauri/target/
+src-tauri/WixTools/
+
+# generated (tauri icon produces these from icon.png)
+src-tauri/icons/android/
+src-tauri/icons/ios/
+
+# os
+.DS_Store
