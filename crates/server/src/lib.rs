@@ -6,6 +6,7 @@ pub mod agent_ws;
 pub mod api;
 pub mod sweeper;
 pub mod conn;
+pub mod dispatch;
 
 use axum::{routing::get, Router};
 use sqlx::SqlitePool;
@@ -23,6 +24,8 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/agent", get(agent_ws::handler))
         .route("/api/machines", get(api::list_machines))
+        .route("/api/machines/{id}/status", get(api::get_machine_status))
+        .route("/api/machines/{id}/snapshots", get(api::list_machine_snapshots))
         .with_state(state)
 }
 
