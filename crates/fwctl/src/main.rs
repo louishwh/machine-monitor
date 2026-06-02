@@ -5,7 +5,7 @@
 //! Mirrors the Tauri console's logic without GUI/keychain so deployment and CI
 //! can issue identities and query the control plane.
 
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result};
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use clap::{Parser, Subcommand};
 use ed25519_dalek::SigningKey;
@@ -34,6 +34,9 @@ enum Cmd {
         server: String,
         #[arg(long)]
         pairing_token: String,
+        /// Path to server CA PEM (for https:// with self-signed cert)
+        #[arg(long)]
+        server_ca: Option<String>,
     },
     /// Issue a machine identity token (prints token + the enroll command)
     Issue {
@@ -47,6 +50,9 @@ enum Cmd {
     List {
         #[arg(long)]
         server: String,
+        /// Path to server CA PEM (for https:// with self-signed cert)
+        #[arg(long)]
+        server_ca: Option<String>,
     },
     /// Pull a machine's status (kind: host|cpu|mem|disk|net|proc|service)
     Status {
@@ -56,6 +62,9 @@ enum Cmd {
         id: String,
         #[arg(long, default_value = "host")]
         kind: String,
+        /// Path to server CA PEM (for https:// with self-signed cert)
+        #[arg(long)]
+        server_ca: Option<String>,
     },
 }
 
@@ -82,16 +91,25 @@ fn pubkey_b64(sk: &SigningKey) -> String {
     B64.encode(sk.verifying_key().as_bytes())
 }
 
-fn http() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(40))
-        .build()
-        .expect("reqwest client")
+/// Build a reqwest client.  When `ca_path` is Some, the PEM at that path is
+/// added as the sole trusted root (for self-signed server certs).  When None,
+/// system roots are used (plain http:// or system-trusted https://).
+fn http(ca_path: Option<&str>) -> anyhow::Result<reqwest::Client> {
+    let mut builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(40));
+    if let Some(path) = ca_path {
+        let pem_bytes = std::fs::read(path)
+            .with_context(|| format!("failed to read --server-ca file: {path}"))?;
+        let cert = reqwest::Certificate::from_pem(&pem_bytes)?;
+        builder = builder.add_root_certificate(cert);
+    }
+    Ok(builder.build()?)
 }
 
 /// Signed control-plane GET. `sign_path` is the path WITHOUT query string
 /// (the server verifies over `uri.path()`); `query` is appended to the URL only.
 async fn signed_get(
+    client: &reqwest::Client,
     server: &str,
     sign_path: &str,
     query: &str,
@@ -100,7 +118,7 @@ async fn signed_get(
     let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
     let sig = fw_proto::auth::sign_request(sk, "GET", sign_path, &ts, b"");
     let url = format!("{}{}{}", server.trim_end_matches('/'), sign_path, query);
-    let resp = http()
+    let resp = client
         .get(&url)
         .header("x-fw-timestamp", ts)
         .header("x-fw-signature", sig)
@@ -144,14 +162,16 @@ async fn main() -> Result<()> {
         Cmd::Pair {
             server,
             pairing_token,
+            server_ca,
         } => {
             let sk = load_key(&kp)?;
+            let client = http(server_ca.as_deref())?;
             let body = serde_json::json!({
                 "pairing_token": pairing_token,
                 "console_public_key_b64": pubkey_b64(&sk),
             });
             let url = format!("{}/api/pair", server.trim_end_matches('/'));
-            let resp = http().post(&url).json(&body).send().await?;
+            let resp = client.post(&url).json(&body).send().await?;
             let status = resp.status();
             let text = resp.text().await?;
             anyhow::ensure!(status.is_success(), "配对失败 {status}: {text}");
@@ -173,16 +193,18 @@ async fn main() -> Result<()> {
             println!("\n# 在目标机执行：");
             println!("sudo fleetwatch-agent enroll --server {srv} --identity '{token}'");
         }
-        Cmd::List { server } => {
+        Cmd::List { server, server_ca } => {
             let sk = load_key(&kp)?;
-            let v = signed_get(&server, "/api/machines", "", &sk).await?;
+            let client = http(server_ca.as_deref())?;
+            let v = signed_get(&client, &server, "/api/machines", "", &sk).await?;
             println!("{}", serde_json::to_string_pretty(&v)?);
         }
-        Cmd::Status { server, id, kind } => {
+        Cmd::Status { server, id, kind, server_ca } => {
             let sk = load_key(&kp)?;
+            let client = http(server_ca.as_deref())?;
             let path = format!("/api/machines/{id}/status");
             let query = format!("?kind={kind}");
-            let v = signed_get(&server, &path, &query, &sk).await?;
+            let v = signed_get(&client, &server, &path, &query, &sk).await?;
             println!("{}", serde_json::to_string_pretty(&v)?);
         }
     }
