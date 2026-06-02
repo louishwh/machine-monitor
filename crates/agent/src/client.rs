@@ -5,12 +5,14 @@ use fw_proto::messages::{AgentToServer, ServerToAgent};
 use crate::config::AgentConfig;
 
 /// Build a CommandResult by collecting detailed status for `kind`.
-/// This is a pure function (no I/O state) so it is easily unit-tested.
-pub fn build_status_result(cmd_id: &str, kind: &str, arg: Option<String>) -> AgentToServer {
-    let detail = crate::collectors::collect_detail(kind, arg);
-    let stdout = serde_json::to_string(&detail).unwrap_or_else(|e| format!("{{\"error\":\"{e}}}\"}}", e = e));
+/// This is a pure (sync, blocking) function — callers in async context must use
+/// `tokio::task::spawn_blocking`.
+pub fn build_status_result(cmd_id: String, kind: String, arg: Option<String>) -> AgentToServer {
+    let detail = crate::collectors::collect_detail(&kind, arg);
+    let stdout = serde_json::to_string(&detail)
+        .unwrap_or_else(|e| serde_json::json!({"error": e.to_string()}).to_string());
     AgentToServer::CommandResult {
-        cmd_id: cmd_id.to_string(),
+        cmd_id,
         exit: 0,
         stdout,
         stderr: String::new(),
@@ -51,8 +53,10 @@ async fn connect_once(cfg: &AgentConfig) -> anyhow::Result<()> {
     loop {
         tokio::select! {
             _ = hb.tick() => {
-                let summary = crate::collectors::collect_summary();
-                let m = AgentToServer::Heartbeat { summary: Some(summary) };
+                let summary = tokio::task::spawn_blocking(crate::collectors::collect_summary)
+                    .await
+                    .ok();
+                let m = AgentToServer::Heartbeat { summary };
                 ws.send(Message::Text(serde_json::to_string(&m)?)).await?;
             }
             msg = ws.next() => {
@@ -61,8 +65,12 @@ async fn connect_once(cfg: &AgentConfig) -> anyhow::Result<()> {
                 match serde_json::from_str::<ServerToAgent>(&txt) {
                     Ok(ServerToAgent::Ping) => { /* keepalive */ }
                     Ok(ServerToAgent::RunStatus { cmd_id, kind, arg }) => {
-                        let result = build_status_result(&cmd_id, &kind, arg);
-                        ws.send(Message::Text(serde_json::to_string(&result)?)).await?;
+                        match tokio::task::spawn_blocking(move || build_status_result(cmd_id, kind, arg)).await {
+                            Ok(result) => {
+                                ws.send(Message::Text(serde_json::to_string(&result)?)).await?;
+                            }
+                            Err(e) => tracing::warn!(error=%e, "spawn_blocking join error for RunStatus"),
+                        }
                     }
                     Ok(ServerToAgent::RunShell { .. }) => {
                         // M4 — shell execution not yet implemented, silently ignore.
@@ -96,7 +104,7 @@ mod tests {
 
     #[test]
     fn build_status_result_carries_cmd_id() {
-        let r = build_status_result("c-1", "host", None);
+        let r = build_status_result("c-1".into(), "host".into(), None);
         match r {
             fw_proto::messages::AgentToServer::CommandResult { cmd_id, done, .. } => {
                 assert_eq!(cmd_id, "c-1");
