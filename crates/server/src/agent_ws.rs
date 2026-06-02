@@ -53,7 +53,7 @@ async fn run(sock: WebSocket, st: AppState) {
     };
 
     // Register this connection in the Conns table.
-    let mut rx = st.conns.register(&id).await;
+    let (mut rx, gen) = st.conns.register(&id).await;
 
     // --- Main loop: select over (socket read) and (outbound channel recv) ---
     loop {
@@ -103,8 +103,9 @@ async fn run(sock: WebSocket, st: AppState) {
         }
     }
 
-    // Cleanup on disconnect
-    st.conns.unregister(&id).await;
+    // Cleanup on disconnect — use generation guard so a stale old-task cleanup
+    // cannot evict a newer connection that registered with a different gen.
+    st.conns.unregister_gen(&id, gen).await;
     st.registry.mark_offline(&id).await;
 }
 
