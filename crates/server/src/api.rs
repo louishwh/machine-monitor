@@ -20,7 +20,8 @@ pub async fn list_machines(State(st): State<AppState>) -> Json<Value> {
             "agentVersion": m.agent_version,
             "status": m.status,
             "lastSeen": m.last_seen,
-            "online": online
+            "online": online,
+            "shellEnabled": m.shell_enabled
         }));
     }
     Json(Value::Array(out))

@@ -19,6 +19,7 @@ pub struct Machine {
     pub agent_version: String,
     pub status: String,
     pub last_seen: Option<String>,
+    pub shell_enabled: bool,
 }
 
 pub async fn upsert_machine(
@@ -52,12 +53,13 @@ pub async fn is_revoked(pool: &SqlitePool, id: &str) -> anyhow::Result<bool> {
 
 pub async fn list_machines(pool: &SqlitePool) -> anyhow::Result<Vec<Machine>> {
     let rows = sqlx::query(
-        "SELECT id,name,hostname,os,agent_version,status,last_seen FROM machines ORDER BY name",
+        "SELECT id,name,hostname,os,agent_version,status,last_seen,shell_enabled FROM machines ORDER BY name",
     ).fetch_all(pool).await?;
     Ok(rows.into_iter().map(|r| Machine {
         id: r.get("id"), name: r.get("name"), hostname: r.get("hostname"),
         os: r.get("os"), agent_version: r.get("agent_version"),
         status: r.get("status"), last_seen: r.get("last_seen"),
+        shell_enabled: r.get::<i64, _>("shell_enabled") != 0,
     }).collect())
 }
 

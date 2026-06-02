@@ -6,6 +6,10 @@
 //!
 //! `signed_get` always signs the **path without the query string** so the
 //! server middleware can verify using `uri.path()`.
+//!
+//! `signed_post` / `signed_patch` serialise the body JSON **once**, sign over
+//! those exact bytes, and send those exact bytes as the request body — so that
+//! signature input matches wire bytes.
 
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
@@ -54,6 +58,80 @@ pub async fn signed_get(server: &str, path: &str, sk: &SigningKey) -> AppResult<
         .get(&url)
         .header("x-fw-timestamp", &ts)
         .header("x-fw-signature", &sig)
+        .send()
+        .await?;
+
+    if resp.status().is_success() {
+        Ok(resp.json::<Value>().await?)
+    } else {
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        Err(AppError::ServerError { status, body })
+    }
+}
+
+/// Perform a signed POST request with a JSON body.
+///
+/// The body is serialized to a `String` exactly once; the signature is
+/// computed over those bytes, and those same bytes are sent as the wire body.
+/// This guarantees the signature input always matches what the server reads.
+pub async fn signed_post(
+    server: &str,
+    path: &str,
+    body: &Value,
+    sk: &SigningKey,
+) -> AppResult<Value> {
+    let body_str = serde_json::to_string(body)
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    let body_bytes = body_str.as_bytes();
+
+    let ts = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let sig = fw_proto::auth::sign_request(sk, "POST", path, &ts, body_bytes);
+
+    let url = format!("{server}{path}");
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .header("x-fw-timestamp", &ts)
+        .header("x-fw-signature", &sig)
+        .header("content-type", "application/json")
+        .body(body_str)
+        .send()
+        .await?;
+
+    if resp.status().is_success() {
+        Ok(resp.json::<Value>().await?)
+    } else {
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        Err(AppError::ServerError { status, body })
+    }
+}
+
+/// Perform a signed PATCH request with a JSON body.
+///
+/// Same serialization-once guarantee as `signed_post`.
+pub async fn signed_patch(
+    server: &str,
+    path: &str,
+    body: &Value,
+    sk: &SigningKey,
+) -> AppResult<Value> {
+    let body_str = serde_json::to_string(body)
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    let body_bytes = body_str.as_bytes();
+
+    let ts = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let sig = fw_proto::auth::sign_request(sk, "PATCH", path, &ts, body_bytes);
+
+    let url = format!("{server}{path}");
+    let client = reqwest::Client::new();
+    let resp = client
+        .patch(&url)
+        .header("x-fw-timestamp", &ts)
+        .header("x-fw-signature", &sig)
+        .header("content-type", "application/json")
+        .body(body_str)
         .send()
         .await?;
 

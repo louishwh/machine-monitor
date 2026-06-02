@@ -20,6 +20,11 @@ pub fn run() {
             commands::list_machines,
             commands::machine_status,
             commands::machine_snapshots,
+            // Task 5 — shell / revoke / audit
+            commands::set_shell,
+            commands::run_shell,
+            commands::revoke_machine,
+            commands::audit,
         ])
         .run(tauri::generate_context!())
         .expect("运行 FleetWatch 管理端出错");

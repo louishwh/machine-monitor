@@ -90,6 +90,60 @@ pub async fn machine_snapshots(id: String) -> Result<Value, AppError> {
     api_client::signed_get(&server, &path, &sk).await
 }
 
+// ─────────────────────────── set_shell ──────────────────────────────────────
+
+/// `PATCH /api/machines/{id}/shell` body `{"enabled": bool}`.
+/// Enables or disables shell access for the given machine.
+#[tauri::command]
+pub async fn set_shell(id: String, enabled: bool) -> Result<Value, AppError> {
+    let server = settings::require_server_url()?;
+    let sk = master_key::load()?;
+    let path = format!("/api/machines/{id}/shell");
+    let body = serde_json::json!({ "enabled": enabled });
+    api_client::signed_patch(&server, &path, &body, &sk).await
+}
+
+// ─────────────────────────── run_shell ──────────────────────────────────────
+
+/// `POST /api/machines/{id}/run-shell` body `{"command": string}`.
+/// Returns `{exit, stdout, stderr}`. Returns error if shell is disabled.
+#[tauri::command]
+pub async fn run_shell(id: String, command: String) -> Result<Value, AppError> {
+    let server = settings::require_server_url()?;
+    let sk = master_key::load()?;
+    let path = format!("/api/machines/{id}/run-shell");
+    let body = serde_json::json!({ "command": command });
+    api_client::signed_post(&server, &path, &body, &sk).await
+}
+
+// ─────────────────────────── revoke_machine ─────────────────────────────────
+
+/// `POST /api/machines/{id}/revoke` — adds the machine to the revocations list
+/// and kicks any live connection.
+#[tauri::command]
+pub async fn revoke_machine(id: String) -> Result<Value, AppError> {
+    let server = settings::require_server_url()?;
+    let sk = master_key::load()?;
+    let path = format!("/api/machines/{id}/revoke");
+    let body = serde_json::json!({});
+    api_client::signed_post(&server, &path, &body, &sk).await
+}
+
+// ─────────────────────────── audit ──────────────────────────────────────────
+
+/// `GET /api/audit?machine_id=<id>&limit=100` — returns audit log entries.
+/// `machine_id` is optional; omit to fetch all machines.
+#[tauri::command]
+pub async fn audit(machine_id: Option<String>) -> Result<Value, AppError> {
+    let server = settings::require_server_url()?;
+    let sk = master_key::load()?;
+    let path = match &machine_id {
+        Some(mid) => format!("/api/audit?machine_id={mid}&limit=100"),
+        None => "/api/audit?limit=100".to_string(),
+    };
+    api_client::signed_get(&server, &path, &sk).await
+}
+
 // ─────────────────────────── Tests ──────────────────────────────────────
 
 #[cfg(test)]
