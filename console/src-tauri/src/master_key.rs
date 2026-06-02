@@ -20,7 +20,7 @@ fn entry() -> AppResult<Entry> {
 
 /// Returns `true` if a master key seed is present in the OS keychain.
 pub fn has_key() -> bool {
-    matches!(entry().and_then(|e| Ok(e.get_password()?)), Ok(_))
+    entry().and_then(|e| Ok(e.get_password()?)).is_ok()
 }
 
 /// Generate a fresh random 32-byte seed and store it in the OS keychain.
