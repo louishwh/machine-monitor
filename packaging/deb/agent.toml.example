@@ -1,0 +1,6 @@
+# FleetWatch agent configuration.
+# Fill identity_token with the token issued by the PC console
+# (管理端「签发机器」按钮的输出), then start the service.
+
+server_url = "wss://your-server.example.com/agent"
+identity_token = "PASTE_TOKEN_FROM_CONSOLE"

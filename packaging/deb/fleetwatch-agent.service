@@ -1,0 +1,19 @@
+[Unit]
+Description=FleetWatch monitoring agent
+Documentation=https://github.com/louishwh/machine-monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/fleetwatch-agent run --config /etc/fleetwatch/agent.toml
+Restart=always
+RestartSec=5
+# Agent needs to read /proc and run status commands; runs as root by default.
+User=root
+# Light hardening (relax if a collector needs more access).
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

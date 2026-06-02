@@ -2,6 +2,29 @@
 name = "fleetwatch-agent"
 version = "0.1.0"
 edition = "2021"
+description = "FleetWatch monitoring agent — reverse-connects to the central server"
+license = "MIT"
+
+# cargo-deb packaging (run `./scripts/build-deb.sh` on a Debian/Ubuntu host).
+[package.metadata.deb]
+maintainer = "louis <louishwh@users.noreply.github.com>"
+copyright = "2026, louis"
+section = "admin"
+priority = "optional"
+depends = "$auto"
+extended-description = "Lightweight agent that connects out to the FleetWatch central server over wss, reports machine status, and runs operator-authorized commands."
+assets = [
+    ["target/release/fleetwatch-agent", "usr/bin/", "755"],
+    ["../../packaging/deb/agent.toml.example", "etc/fleetwatch/agent.toml", "644"],
+]
+conf-files = ["/etc/fleetwatch/agent.toml"]
+maintainer-scripts = "../../packaging/deb/scripts"
+
+[package.metadata.deb.systemd-units]
+unit-scripts = "../../packaging/deb"
+unit-name = "fleetwatch-agent"
+enable = true
+start = false
 
 [dependencies]
 fw-proto = { path = "../proto" }

@@ -1,0 +1,19 @@
+[Unit]
+Description=FleetWatch central server
+Documentation=https://github.com/louishwh/machine-monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=FW_SERVER_CONFIG=/etc/fleetwatch/server.toml
+ExecStart=/usr/bin/fleetwatch-server
+Restart=always
+RestartSec=5
+User=fleetwatch
+Group=fleetwatch
+StateDirectory=fleetwatch
+WorkingDirectory=/var/lib/fleetwatch
+
+[Install]
+WantedBy=multi-user.target

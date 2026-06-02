@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+# Enable (but do not start) the agent on install — it needs an identity token
+# in /etc/fleetwatch/agent.toml before it can connect.
+if [ "$1" = "configure" ]; then
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload || true
+        systemctl enable fleetwatch-agent.service || true
+        echo "FleetWatch agent installed."
+        echo "Next: edit /etc/fleetwatch/agent.toml (set server_url + identity_token),"
+        echo "      then: systemctl start fleetwatch-agent"
+    fi
+fi
+
+exit 0
