@@ -26,6 +26,23 @@ export interface Machine {
   status: string;
   lastSeen: string;
   online: boolean;
+  shellEnabled: boolean;
+}
+
+export interface ShellResult {
+  exit: number;
+  stdout: string;
+  stderr: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  machine_id: string;
+  kind: string;
+  request: string;
+  exit: number | null;
+  output: string;
+  created_at: string;
 }
 
 // ─── Master key commands ───────────────────────────────────────────────────────
@@ -68,6 +85,24 @@ export const machineStatus = (id: string, kind: string) =>
 /** Fetch recent snapshots for a machine. */
 export const machineSnapshots = (id: string) =>
   invoke<unknown[]>("machine_snapshots", { id });
+
+// ─── Shell / revoke / audit commands ─────────────────────────────────────────
+
+/** Enable or disable shell access for a machine. */
+export const setShell = (id: string, enabled: boolean) =>
+  invoke<unknown>("set_shell", { id, enabled });
+
+/** Run a shell command on a machine. Returns exit/stdout/stderr. */
+export const runShell = (id: string, command: string) =>
+  invoke<ShellResult>("run_shell", { id, command });
+
+/** Revoke a machine (adds to revocations, kicks live connection). */
+export const revokeMachine = (id: string) =>
+  invoke<unknown>("revoke_machine", { id });
+
+/** Fetch audit log entries, optionally filtered by machine ID. */
+export const audit = (machineId?: string) =>
+  invoke<AuditEntry[]>("audit", { machineId: machineId ?? null });
 
 // ─── Error helper ─────────────────────────────────────────────────────────────
 

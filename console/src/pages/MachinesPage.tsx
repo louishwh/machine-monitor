@@ -5,8 +5,14 @@ import {
   machineStatus,
   machineSnapshots,
   getServerUrl,
+  setShell,
+  runShell,
+  revokeMachine,
+  audit,
   errMsg,
   type Machine,
+  type ShellResult,
+  type AuditEntry,
 } from "../api";
 import { Modal, Spinner, useToast } from "../ui";
 
@@ -147,9 +153,11 @@ function JsonBlock({ data }: { data: unknown }) {
 function MachineDetailModal({
   machine,
   onClose,
+  onRefresh,
 }: {
   machine: Machine;
   onClose: () => void;
+  onRefresh: () => void;
 }) {
   const toast = useToast();
   const [activeKind, setActiveKind] = useState<StatusKind | null>(null);
@@ -157,6 +165,20 @@ function MachineDetailModal({
   const [loadingKind, setLoadingKind] = useState<StatusKind | null>(null);
   const [snapshots, setSnapshots] = useState<unknown[] | null>(null);
   const [loadingSnaps, setLoadingSnaps] = useState(false);
+
+  // Shell state
+  const [shellEnabled, setShellEnabled] = useState(machine.shellEnabled);
+  const [togglingShell, setTogglingShell] = useState(false);
+  const [shellCmd, setShellCmd] = useState("");
+  const [shellRunning, setShellRunning] = useState(false);
+  const [shellResult, setShellResult] = useState<ShellResult | null>(null);
+
+  // Audit state
+  const [auditRows, setAuditRows] = useState<AuditEntry[] | null>(null);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+
+  // Revoke state
+  const [revoking, setRevoking] = useState(false);
 
   async function fetchStatus(kind: StatusKind) {
     setActiveKind(kind);
@@ -185,6 +207,63 @@ function MachineDetailModal({
     }
   }
 
+  async function handleToggleShell() {
+    const next = !shellEnabled;
+    setTogglingShell(true);
+    try {
+      await setShell(machine.id, next);
+      setShellEnabled(next);
+      toast("ok", next ? "Shell 权限已开启" : "Shell 权限已关闭");
+    } catch (e) {
+      toast("err", errMsg(e));
+    } finally {
+      setTogglingShell(false);
+    }
+  }
+
+  async function handleRunShell() {
+    if (!shellCmd.trim()) return;
+    if (!window.confirm(`确认在 ${machine.name} 上执行命令？\n\n> ${shellCmd}`)) return;
+    setShellRunning(true);
+    setShellResult(null);
+    try {
+      const result = await runShell(machine.id, shellCmd.trim());
+      setShellResult(result);
+    } catch (e) {
+      toast("err", errMsg(e));
+    } finally {
+      setShellRunning(false);
+    }
+  }
+
+  async function handleRevoke() {
+    if (!window.confirm(`确认吊销机器 ${machine.name}？\n\n此操作不可逆，Agent 将被立即踢下线。`)) return;
+    setRevoking(true);
+    try {
+      await revokeMachine(machine.id);
+      toast("ok", `机器 ${machine.name} 已吊销`);
+      onRefresh();
+      onClose();
+    } catch (e) {
+      toast("err", errMsg(e));
+    } finally {
+      setRevoking(false);
+    }
+  }
+
+  async function fetchAudit() {
+    if (auditRows !== null) return;
+    setLoadingAudit(true);
+    try {
+      const rows = await audit(machine.id);
+      setAuditRows(rows);
+    } catch (e) {
+      toast("err", errMsg(e));
+    } finally {
+      setLoadingAudit(false);
+    }
+  }
+
   const lastSeenStr = machine.lastSeen
     ? new Date(machine.lastSeen).toLocaleString("zh-CN")
     : "—";
@@ -200,6 +279,75 @@ function MachineDetailModal({
           <InfoRow label="Agent 版本" value={machine.agentVersion} />
           <InfoRow label="状态" value={machine.online ? "在线" : "离线"} />
           <InfoRow label="最后心跳" value={lastSeenStr} />
+        </div>
+
+        {/* Shell 权限 toggle */}
+        <div className="rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2.5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-slate-200">Shell 权限</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {shellEnabled ? "已开启 — 可执行远程命令" : "已关闭 — 执行命令将返回 403"}
+              </p>
+            </div>
+            <button
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                shellEnabled ? "bg-emerald-600" : "bg-slate-600"
+              } ${togglingShell ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+              onClick={handleToggleShell}
+              disabled={togglingShell}
+              title={shellEnabled ? "关闭 Shell" : "开启 Shell"}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                  shellEnabled ? "translate-x-4" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Command console — only shown when shell is enabled */}
+          {shellEnabled && (
+            <div className="mt-3 space-y-2">
+              <div className="flex gap-2">
+                <input
+                  className="input flex-1 font-mono text-xs"
+                  type="text"
+                  placeholder="输入命令，例如: ls -la /tmp"
+                  value={shellCmd}
+                  onChange={(e) => setShellCmd(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !shellRunning && handleRunShell()}
+                  disabled={shellRunning}
+                />
+                <button
+                  className="btn-primary text-xs px-3 py-1"
+                  onClick={handleRunShell}
+                  disabled={shellRunning || !shellCmd.trim()}
+                >
+                  {shellRunning ? <Spinner /> : "执行"}
+                </button>
+              </div>
+              {shellResult !== null && (
+                <div className="rounded-lg bg-slate-900 border border-slate-700 p-2.5 font-mono text-xs space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`badge text-xs ${shellResult.exit === 0 ? "bg-emerald-700/40 text-emerald-300" : "bg-red-700/40 text-red-300"}`}>
+                      exit {shellResult.exit}
+                    </span>
+                  </div>
+                  {shellResult.stdout && (
+                    <pre className="text-slate-300 whitespace-pre-wrap break-all max-h-40 overflow-auto">
+                      {shellResult.stdout}
+                    </pre>
+                  )}
+                  {shellResult.stderr && (
+                    <pre className="text-red-400 whitespace-pre-wrap break-all max-h-24 overflow-auto">
+                      {shellResult.stderr}
+                    </pre>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Status fetch buttons */}
@@ -254,6 +402,66 @@ function MachineDetailModal({
               </div>
             )
           )}
+        </div>
+
+        {/* Audit log */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="label">审计日志</p>
+            <button
+              className="btn-ghost text-xs py-0.5 px-2"
+              onClick={fetchAudit}
+              disabled={loadingAudit}
+            >
+              {loadingAudit ? <Spinner /> : "加载审计"}
+            </button>
+          </div>
+          {auditRows !== null && (
+            auditRows.length === 0 ? (
+              <p className="text-xs text-slate-500">暂无审计记录</p>
+            ) : (
+              <div className="space-y-1.5 max-h-48 overflow-auto">
+                {auditRows.map((row) => (
+                  <div
+                    key={row.id}
+                    className="rounded bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="badge bg-slate-700 text-slate-300">{row.kind}</span>
+                      <span className={`badge text-xs ${row.exit === 0 ? "bg-emerald-700/40 text-emerald-300" : row.exit === null ? "bg-slate-700 text-slate-400" : "bg-red-700/40 text-red-300"}`}>
+                        exit {row.exit ?? "—"}
+                      </span>
+                      <span className="font-mono text-slate-300 truncate max-w-[200px]">
+                        {row.request}
+                      </span>
+                      <span className="text-slate-600 ml-auto whitespace-nowrap">
+                        {new Date(row.created_at).toLocaleString("zh-CN")}
+                      </span>
+                    </div>
+                    {row.output && (
+                      <pre className="mt-1 text-slate-500 whitespace-pre-wrap break-all max-h-16 overflow-auto">
+                        {row.output}
+                      </pre>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+        </div>
+
+        {/* Revoke */}
+        <div className="pt-2 border-t border-slate-700">
+          <button
+            className="btn text-xs py-1.5 px-3 bg-red-900/30 border border-red-700/50 text-red-400 hover:bg-red-800/40 hover:text-red-300 transition w-full"
+            onClick={handleRevoke}
+            disabled={revoking}
+          >
+            {revoking ? <Spinner label="吊销中…" /> : "吊销此机器"}
+          </button>
+          <p className="text-xs text-slate-600 mt-1 text-center">
+            吊销后 Agent 将被踢下线，操作不可逆
+          </p>
         </div>
       </div>
     </Modal>
@@ -381,7 +589,11 @@ export default function MachinesPage() {
         <IssueMachineModal onClose={() => setShowIssue(false)} serverUrl={serverUrl} />
       )}
       {detailMachine && (
-        <MachineDetailModal machine={detailMachine} onClose={() => setDetailMachine(null)} />
+        <MachineDetailModal
+          machine={detailMachine}
+          onClose={() => setDetailMachine(null)}
+          onRefresh={fetchMachines}
+        />
       )}
     </div>
   );
