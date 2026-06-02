@@ -10,11 +10,17 @@ pub mod auth;
 pub mod sweeper;
 pub mod conn;
 pub mod dispatch;
+pub mod tls;
 
 use axum::{middleware, routing::{get, patch, post}, Router};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+/// Health check handler — not behind auth.
+async fn health() -> &'static str {
+    "ok"
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -44,10 +50,11 @@ pub fn build_router(state: AppState) -> Router {
         .layer(sig_layer)
         .with_state(state.clone());
 
-    // Unauthenticated routes — agent WebSocket and one-time pairing.
+    // Unauthenticated routes — agent WebSocket, one-time pairing, and health.
     Router::new()
         .route("/agent", get(agent_ws::handler))
         .route("/api/pair", post(pair::pair))
+        .route("/health", get(health))
         .with_state(state)
         .merge(protected)
 }
@@ -55,6 +62,10 @@ pub fn build_router(state: AppState) -> Router {
 pub async fn run() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     let cfg = config::ServerConfig::from_env_or_file()?;
+
+    // Ensure TLS cert/key exist before anything else.
+    tls::ensure_cert(&cfg.tls_cert_path, &cfg.tls_key_path, &cfg.tls_san)?;
+
     let pool = db::init_pool(&cfg.db_path).await?;
 
     // Load console public key from DB (None if not yet paired).
@@ -76,10 +87,61 @@ pub async fn run() -> anyhow::Result<()> {
     };
     sweeper::spawn(state.clone());
     let app = build_router(state);
-    let listener = tokio::net::TcpListener::bind(&cfg.bind).await?;
-    tracing::info!(bind = %cfg.bind, "fleetwatch-server listening");
-    axum::serve(listener, app).await?;
-    Ok(())
+
+    serve_tls(app, &cfg.bind, &cfg.tls_cert_path, &cfg.tls_key_path).await
+}
+
+/// Serve the given `app` over TLS on `bind_addr` using the cert/key PEM files.
+///
+/// Uses tokio-rustls with a manual hyper accept loop because axum-server 0.7
+/// requires hyper 0.14 which conflicts with axum 0.8 / hyper 1.
+pub async fn serve_tls(
+    app: Router,
+    bind_addr: &str,
+    cert_path: &str,
+    key_path: &str,
+) -> anyhow::Result<()> {
+    use hyper_util::rt::{TokioExecutor, TokioIo};
+    use hyper_util::server::conn::auto::Builder as AutoBuilder;
+    use hyper_util::service::TowerToHyperService;
+    use tokio_rustls::TlsAcceptor;
+    use tower::Service;
+
+    let tls_cfg = tls::server_config(cert_path, key_path)?;
+    let acceptor = TlsAcceptor::from(tls_cfg);
+
+    let listener = tokio::net::TcpListener::bind(bind_addr).await?;
+    tracing::info!(bind = %bind_addr, "fleetwatch-server listening (TLS)");
+
+    loop {
+        let (tcp_stream, peer_addr) = listener.accept().await?;
+        let acceptor = acceptor.clone();
+        let app = app.clone();
+
+        tokio::spawn(async move {
+            match acceptor.accept(tcp_stream).await {
+                Ok(tls_stream) => {
+                    let io = TokioIo::new(tls_stream);
+                    let tower_svc = app
+                        .into_make_service()
+                        .call(peer_addr)
+                        .await
+                        .unwrap();
+                    let hyper_svc = TowerToHyperService::new(tower_svc);
+                    let builder = AutoBuilder::new(TokioExecutor::new());
+                    if let Err(e) = builder
+                        .serve_connection_with_upgrades(io, hyper_svc)
+                        .await
+                    {
+                        tracing::debug!(peer = %peer_addr, err = %e, "connection error");
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!(peer = %peer_addr, err = %e, "TLS handshake failed");
+                }
+            }
+        });
+    }
 }
 
 pub mod test_support {
