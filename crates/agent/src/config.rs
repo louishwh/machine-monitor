@@ -4,6 +4,10 @@ use serde::Deserialize;
 pub struct AgentConfig {
     pub server_url: String,
     pub identity_token: String,
+    /// Inline PEM of the server's self-signed TLS certificate.
+    /// When present together with a `wss://` URL the agent pins this cert as
+    /// the only trusted root (no system roots consulted).
+    pub server_ca_pem: Option<String>,
 }
 
 impl AgentConfig {

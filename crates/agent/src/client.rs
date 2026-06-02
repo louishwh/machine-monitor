@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 use futures_util::{SinkExt, StreamExt};
 use tokio::process::Command;
@@ -78,11 +79,33 @@ pub fn build_status_result(cmd_id: String, kind: String, arg: Option<String>) ->
 
 pub fn next_backoff(curr: u64) -> u64 { (curr * 2).min(30) }
 
+/// Build a rustls-backed TLS connector that trusts ONLY the given PEM certificate.
+/// This is used for wss:// connections to a server with a self-signed cert.
+pub fn build_tls_connector(ca_pem: &str) -> anyhow::Result<tokio_tungstenite::Connector> {
+    use rustls::RootCertStore;
+    use tokio_tungstenite::Connector;
+
+    let mut roots = RootCertStore::empty();
+    let pem_bytes = ca_pem.as_bytes();
+    let certs: Vec<_> = rustls_pemfile::certs(&mut std::io::Cursor::new(pem_bytes))
+        .collect::<Result<Vec<_>, _>>()?;
+    anyhow::ensure!(!certs.is_empty(), "no certificates found in server_ca_pem");
+    for cert in certs {
+        roots.add(cert)?;
+    }
+    let config = rustls::ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    Ok(Connector::Rustls(Arc::new(config)))
+}
+
 fn detect_os() -> String {
     if cfg!(target_os = "macos") { "macos".into() } else { "ubuntu".into() }
 }
 
 pub async fn run_loop(cfg: AgentConfig) {
+    // Install the ring crypto provider once; ignore error if already installed.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let mut backoff = 1u64;
     loop {
         match connect_once(&cfg).await {
@@ -95,7 +118,22 @@ pub async fn run_loop(cfg: AgentConfig) {
 }
 
 async fn connect_once(cfg: &AgentConfig) -> anyhow::Result<()> {
-    let (mut ws, _) = tokio_tungstenite::connect_async(&cfg.server_url).await?;
+    let (mut ws, _) = if cfg.server_url.starts_with("wss://") {
+        if let Some(pem) = &cfg.server_ca_pem {
+            let connector = build_tls_connector(pem)?;
+            tokio_tungstenite::connect_async_tls_with_config(
+                &cfg.server_url,
+                None,
+                false,
+                Some(connector),
+            )
+            .await?
+        } else {
+            tokio_tungstenite::connect_async(&cfg.server_url).await?
+        }
+    } else {
+        tokio_tungstenite::connect_async(&cfg.server_url).await?
+    };
     let hostname = hostname();
     let hello = AgentToServer::Hello {
         identity_token: cfg.identity_token.clone(),
@@ -197,5 +235,26 @@ mod tests {
             run_shell("sleep 5", Duration::from_millis(100)).await;
         assert_eq!(exit, -1, "expected exit -1 on timeout, got {exit}");
         assert_eq!(stderr, "timeout", "expected stderr 'timeout', got: {stderr:?}");
+    }
+
+    /// build_tls_connector must succeed for a valid self-signed cert PEM.
+    #[test]
+    fn tls_connector_valid_cert() {
+        // Install ring so rustls operations work in the test binary.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        // Mint a fresh self-signed cert with rcgen.
+        let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()])
+            .expect("rcgen generate");
+        let pem = cert.cert.pem();
+        assert!(build_tls_connector(&pem).is_ok(), "expected Ok for valid cert PEM");
+    }
+
+    /// build_tls_connector must return an error for garbage input.
+    #[test]
+    fn tls_connector_garbage_input() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let result = build_tls_connector("this is not a PEM cert");
+        assert!(result.is_err(), "expected Err for garbage PEM input");
     }
 }
