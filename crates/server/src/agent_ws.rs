@@ -29,9 +29,19 @@ async fn run(sock: WebSocket, st: AppState) {
         let Ok(parsed) = serde_json::from_str::<AgentToServer>(&txt) else { continue };
         match parsed {
             AgentToServer::Hello { identity_token, hostname, os, agent_version } => {
-                let payload = match verify_identity(&st.console_pubkey, &identity_token) {
-                    Ok(p) => p,
+                // Read the shared console public key — reject immediately if unpaired.
+                let pk_guard = st.console_pubkey.read().await;
+                let Some(pk) = pk_guard.as_ref() else {
+                    let _ = send_sink(&mut sink, &ServerToAgent::Reject { reason: "未配对".into() }).await;
+                    return;
+                };
+                let payload = match verify_identity(pk, &identity_token) {
+                    Ok(p) => {
+                        drop(pk_guard); // release read lock before async work
+                        p
+                    }
                     Err(_) => {
+                        drop(pk_guard);
                         let _ = send_sink(&mut sink, &ServerToAgent::Reject { reason: "身份无效".into() }).await;
                         return;
                     }
