@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
+use tokio::sync::{mpsc, oneshot, Mutex, Notify, RwLock};
 use fw_proto::messages::ServerToAgent;
 
 /// Result of a command sent to an agent.
@@ -14,8 +14,8 @@ pub struct CommandResult {
     pub done: bool,
 }
 
-/// `(generation, sender)` entry stored per machine connection.
-type SenderEntry = (u64, mpsc::Sender<ServerToAgent>);
+/// `(generation, sender, kill_notify)` entry stored per machine connection.
+type SenderEntry = (u64, mpsc::Sender<ServerToAgent>, Arc<Notify>);
 
 pub struct Conns {
     next_gen: Arc<AtomicU64>,
@@ -51,14 +51,30 @@ impl Conns {
     }
 
     /// Register a connection for `id`.
-    /// Returns `(receiver, generation)`. The caller must pass the returned
-    /// generation to `unregister_gen` so a stale disconnect cannot evict a
-    /// newer connection that arrived before cleanup runs.
-    pub async fn register(&self, id: &str) -> (mpsc::Receiver<ServerToAgent>, u64) {
+    /// Returns `(receiver, kill_notify, generation)`.
+    /// - The caller drives `rx` to receive outbound `ServerToAgent` messages.
+    /// - The caller awaits `kill_notify.notified()` to detect a forced kick.
+    /// - The caller must pass `generation` to `unregister_gen` so a stale
+    ///   disconnect cannot evict a newer connection registered afterwards.
+    pub async fn register(&self, id: &str) -> (mpsc::Receiver<ServerToAgent>, Arc<Notify>, u64) {
         let gen = self.next_gen.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = mpsc::channel(32);
-        self.senders.write().await.insert(id.to_string(), (gen, tx));
-        (rx, gen)
+        let kill = Arc::new(Notify::new());
+        self.senders.write().await.insert(id.to_string(), (gen, tx, Arc::clone(&kill)));
+        (rx, kill, gen)
+    }
+
+    /// Force-disconnect the agent identified by `id`.
+    /// Fires the kill notify (waking any `notified()` future, including one
+    /// not yet polling) and removes the sender so subsequent `send()` calls
+    /// return an error.
+    pub async fn kick(&self, id: &str) {
+        let entry = self.senders.write().await.remove(id);
+        if let Some((_, _, kill)) = entry {
+            // `notify_one` stores a permit so the next `notified().await`
+            // returns immediately even if no task is currently polling.
+            kill.notify_one();
+        }
     }
 
     /// Remove the connection entry for `id` **only** if its stored generation
@@ -66,7 +82,7 @@ impl Conns {
     /// newer connection that registered after the old one disconnected.
     pub async fn unregister_gen(&self, id: &str, gen: u64) {
         let mut senders = self.senders.write().await;
-        if let Some(&(stored_gen, _)) = senders.get(id) {
+        if let Some(&(stored_gen, _, _)) = senders.get(id) {
             if stored_gen == gen {
                 senders.remove(id);
             }
@@ -76,7 +92,7 @@ impl Conns {
     /// Send a message to the connected agent. Returns Err if no connection exists.
     pub async fn send(&self, id: &str, msg: ServerToAgent) -> anyhow::Result<()> {
         let senders = self.senders.read().await;
-        let (_, tx) = senders
+        let (_, tx, _) = senders
             .get(id)
             .ok_or_else(|| anyhow::anyhow!("no connection for {id}"))?;
         tx.send(msg)
@@ -118,7 +134,7 @@ mod tests {
     #[tokio::test]
     async fn register_send_unregister() {
         let conns = Conns::new();
-        let (mut rx, gen) = conns.register("m-1").await;
+        let (mut rx, _kill, gen) = conns.register("m-1").await;
         conns.send("m-1", ServerToAgent::Ping).await.unwrap();
         assert!(rx.recv().await.is_some());
         conns.unregister_gen("m-1", gen).await;
@@ -129,9 +145,9 @@ mod tests {
     async fn stale_unregister_does_not_evict_new_connection() {
         let conns = Conns::new();
         // Simulate old connection
-        let (_rx_old, gen_old) = conns.register("m-1").await;
+        let (_rx_old, _kill_old, gen_old) = conns.register("m-1").await;
         // New connection arrives, overwrites old sender
-        let (mut rx_new, _gen_new) = conns.register("m-1").await;
+        let (mut rx_new, _kill_new, _gen_new) = conns.register("m-1").await;
         // Old task's cleanup fires with stale gen — must be a no-op
         conns.unregister_gen("m-1", gen_old).await;
         // New connection must still be reachable
@@ -143,9 +159,34 @@ mod tests {
     async fn cloned_conns_share_generation_counter() {
         let a = Conns::new();
         let b = a.clone();
-        let (_rx1, g1) = a.register("m-1").await;
-        let (_rx2, g2) = b.register("m-2").await;
+        let (_rx1, _k1, g1) = a.register("m-1").await;
+        let (_rx2, _k2, g2) = b.register("m-2").await;
         assert_ne!(g1, g2); // distinct generations across clones
+    }
+
+    #[tokio::test]
+    async fn kick_signals() {
+        let conns = Conns::new();
+        let (_rx, kill, _gen) = conns.register("m-1").await;
+
+        // Spawn a task that waits on the kill notify.
+        let kill2 = Arc::clone(&kill);
+        let handle = tokio::spawn(async move {
+            kill2.notified().await;
+        });
+
+        // Kick the connection — must wake the waiting task within 500 ms.
+        conns.kick("m-1").await;
+        tokio::time::timeout(
+            tokio::time::Duration::from_millis(500),
+            handle,
+        )
+        .await
+        .expect("kick did not signal within timeout")
+        .expect("task panicked");
+
+        // Sender must be gone after kick.
+        assert!(conns.send("m-1", ServerToAgent::Ping).await.is_err());
     }
 
     #[tokio::test]

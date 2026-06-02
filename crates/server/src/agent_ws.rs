@@ -63,12 +63,16 @@ async fn run(sock: WebSocket, st: AppState) {
     };
 
     // Register this connection in the Conns table.
-    let (mut rx, gen) = st.conns.register(&id).await;
+    // `kill` is notified by `conns.kick(&id)` to force-disconnect this agent.
+    let (mut rx, kill, gen) = st.conns.register(&id).await;
 
-    // --- Main loop: select over (socket read) and (outbound channel recv) ---
+    // --- Main loop: select over three arms ---
+    // (a) inbound from agent socket
+    // (b) outbound from server → agent channel
+    // (c) kill notify (forced revocation disconnect)
     loop {
         tokio::select! {
-            // Inbound: messages from agent
+            // (a) Inbound: messages from agent
             maybe_msg = stream.next() => {
                 match maybe_msg {
                     Some(Ok(Message::Text(t))) => {
@@ -99,7 +103,7 @@ async fn run(sock: WebSocket, st: AppState) {
                 }
             }
 
-            // Outbound: messages the server wants to send to this agent
+            // (b) Outbound: messages the server wants to send to this agent
             maybe_outbound = rx.recv() => {
                 match maybe_outbound {
                     Some(msg) => {
@@ -109,6 +113,12 @@ async fn run(sock: WebSocket, st: AppState) {
                     }
                     None => break, // channel dropped (server shutting down)
                 }
+            }
+
+            // (c) Kill: forced disconnect triggered by conns.kick() (e.g. live revoke)
+            _ = kill.notified() => {
+                let _ = send_sink(&mut sink, &ServerToAgent::Reject { reason: "已吊销".into() }).await;
+                break;
             }
         }
     }
