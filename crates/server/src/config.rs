@@ -10,11 +10,28 @@ pub struct ServerConfig {
     /// One-time secret token the console must present to complete pairing.
     #[serde(default = "default_pairing_token")]
     pub pairing_token: String,
+    /// Path to the TLS certificate PEM file.
+    #[serde(default = "default_tls_cert_path")]
+    pub tls_cert_path: String,
+    /// Path to the TLS private key PEM file.
+    #[serde(default = "default_tls_key_path")]
+    pub tls_key_path: String,
+    /// Additional Subject Alternative Names (DNS names or IP addresses) for the self-signed cert.
+    #[serde(default)]
+    pub tls_san: Vec<String>,
 }
 
 fn default_pairing_token() -> String {
     // Intentionally a placeholder — production deployments must set this explicitly.
     "changeme".into()
+}
+
+fn default_tls_cert_path() -> String {
+    "/etc/fleetwatch/tls/cert.pem".into()
+}
+
+fn default_tls_key_path() -> String {
+    "/etc/fleetwatch/tls/key.pem".into()
 }
 
 impl ServerConfig {
@@ -42,6 +59,9 @@ mod tests {
                 .encode([9u8; 32]),
             db_path: "/tmp/fw.db".into(),
             pairing_token: "test-token".into(),
+            tls_cert_path: default_tls_cert_path(),
+            tls_key_path: default_tls_key_path(),
+            tls_san: vec![],
         };
         let key = cfg.console_public_key().unwrap();
         assert_eq!(key.len(), 32);
