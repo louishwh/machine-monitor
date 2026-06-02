@@ -17,20 +17,24 @@ pub struct CommandResult {
 /// `(generation, sender)` entry stored per machine connection.
 type SenderEntry = (u64, mpsc::Sender<ServerToAgent>);
 
-#[derive(Default)]
 pub struct Conns {
-    next_gen: AtomicU64,
+    next_gen: Arc<AtomicU64>,
     senders: Arc<RwLock<HashMap<String, SenderEntry>>>,
     pending: Arc<Mutex<HashMap<String, oneshot::Sender<CommandResult>>>>,
 }
 
-// Manual Clone: AtomicU64 isn't Clone, but we share the same Arc-backed state
-// via the Arc<RwLock<...>> fields. The AtomicU64 lives only on the canonical
-// instance; clones share the senders/pending Arcs and carry a dummy counter.
+impl Default for Conns {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// All fields are Arc-backed, so Clone is a shallow reference copy and all
+// clones share the same generation counter, senders map, and pending map.
 impl Clone for Conns {
     fn clone(&self) -> Self {
         Self {
-            next_gen: AtomicU64::new(0), // not used on clones
+            next_gen: Arc::clone(&self.next_gen),
             senders: Arc::clone(&self.senders),
             pending: Arc::clone(&self.pending),
         }
@@ -39,7 +43,11 @@ impl Clone for Conns {
 
 impl Conns {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            next_gen: Arc::new(AtomicU64::new(1)),
+            senders: Arc::new(RwLock::new(HashMap::new())),
+            pending: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     /// Register a connection for `id`.
@@ -129,6 +137,15 @@ mod tests {
         // New connection must still be reachable
         conns.send("m-1", ServerToAgent::Ping).await.unwrap();
         assert!(rx_new.recv().await.is_some());
+    }
+
+    #[tokio::test]
+    async fn cloned_conns_share_generation_counter() {
+        let a = Conns::new();
+        let b = a.clone();
+        let (_rx1, g1) = a.register("m-1").await;
+        let (_rx2, g2) = b.register("m-2").await;
+        assert_ne!(g1, g2); // distinct generations across clones
     }
 
     #[tokio::test]
