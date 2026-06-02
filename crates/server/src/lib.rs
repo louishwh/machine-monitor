@@ -4,13 +4,14 @@ pub mod store;
 pub mod registry;
 pub mod agent_ws;
 pub mod api;
+pub mod admin;
 pub mod pair;
 pub mod auth;
 pub mod sweeper;
 pub mod conn;
 pub mod dispatch;
 
-use axum::{middleware, routing::{get, post}, Router};
+use axum::{middleware, routing::{get, patch, post}, Router};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -36,6 +37,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/machines", get(api::list_machines))
         .route("/api/machines/{id}/status", get(api::get_machine_status))
         .route("/api/machines/{id}/snapshots", get(api::list_machine_snapshots))
+        .route("/api/machines/{id}/shell", patch(admin::patch_shell_enabled))
+        .route("/api/machines/{id}/run-shell", post(admin::post_run_shell))
+        .route("/api/machines/{id}/revoke", post(admin::post_revoke))
+        .route("/api/audit", get(admin::get_audit))
         .layer(sig_layer)
         .with_state(state.clone());
 
