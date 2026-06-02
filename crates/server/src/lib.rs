@@ -61,6 +61,9 @@ pub fn build_router(state: AppState) -> Router {
 
 pub async fn run() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
+    // Pin the rustls crypto provider so there's no ambiguity if more than one
+    // provider is ever linked in. Harmless if already installed.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let cfg = config::ServerConfig::from_env_or_file()?;
 
     // Ensure TLS cert/key exist before anything else.
