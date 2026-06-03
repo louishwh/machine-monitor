@@ -6,7 +6,7 @@ import MachinesPage from "./pages/MachinesPage";
 type View = "connect" | "machines";
 
 export default function App() {
-  const [view, setView] = useState<View>("connect");
+  const [view, setView] = useState<View>("machines");
 
   return (
     <ToastProvider>
@@ -18,16 +18,16 @@ export default function App() {
             <p className="text-xs text-slate-500 mt-0.5">管理端</p>
           </div>
           <NavItem
-            label="连接 & 配对"
-            icon="🔗"
-            active={view === "connect"}
-            onClick={() => setView("connect")}
-          />
-          <NavItem
             label="机器"
             icon="🖥"
             active={view === "machines"}
             onClick={() => setView("machines")}
+          />
+          <NavItem
+            label="连接 & 配对"
+            icon="🔗"
+            active={view === "connect"}
+            onClick={() => setView("connect")}
           />
         </nav>
 
