@@ -52,8 +52,23 @@ build-agent: ## Cross-compile the agent -> static linux x86_64
 	cargo zigbuild --release --target $(LINUX_TARGET) -p fleetwatch-agent
 	@echo "==> $(LINUX_DIR)/fleetwatch-agent"
 
+ARM_TARGET ?= aarch64-unknown-linux-musl
+ARM_DIR    := target/$(ARM_TARGET)/release
+
+.PHONY: build-agent-arm64
+build-agent-arm64: ## Cross-compile the agent -> static linux arm64 (aarch64)
+	rustup target add $(ARM_TARGET)
+	cargo zigbuild --release --target $(ARM_TARGET) -p fleetwatch-agent
+	@echo "==> $(ARM_DIR)/fleetwatch-agent"
+
+.PHONY: build-server-arm64
+build-server-arm64: ## Cross-compile the server -> static linux arm64 (aarch64)
+	rustup target add $(ARM_TARGET)
+	cargo zigbuild --release --target $(ARM_TARGET) -p fleetwatch-server
+	@echo "==> $(ARM_DIR)/fleetwatch-server"
+
 .PHONY: build-linux
-build-linux: build-server build-agent ## Build both server + agent linux binaries
+build-linux: build-server build-agent ## Build both server + agent linux binaries (x86_64)
 
 # ── fwctl (operator CLI, host-native) ─────────────────────────────────────────
 .PHONY: build-fwctl
