@@ -683,10 +683,14 @@ function MachineRow({ machine, onClick }: { machine: Machine; onClick: () => voi
         {machine.online ? "在线" : "离线"}
       </span>
 
-      {/* Name + hostname */}
+      {/* Name + hardware spec (always visible; hostname/IP omitted) */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-slate-100 truncate">{machine.name}</p>
-        <p className="text-xs text-slate-500 truncate">{machine.hostname}</p>
+        {machine.summary?.logical_cores ? (
+          <p className="text-xs text-slate-500 truncate tabular-nums">
+            {machine.summary.logical_cores} 核 · {fmtBytes(machine.summary.mem_total_bytes)} · {fmtBytes(machine.summary.disk_total_bytes)}
+          </p>
+        ) : null}
       </div>
 
       {/* Live usage (color-coded text from latest heartbeat summary) */}
@@ -697,13 +701,6 @@ function MachineRow({ machine, onClick }: { machine: Machine; onClick: () => voi
           <span className="text-slate-500">磁盘 <Pct v={machine.summary.disk_pct} /></span>
         </div>
       )}
-
-      {/* Hardware spec (cores · RAM · disk) */}
-      {machine.summary?.logical_cores ? (
-        <span className="hidden lg:block text-xs text-slate-500 tabular-nums shrink-0">
-          {machine.summary.logical_cores} 核 · {fmtBytes(machine.summary.mem_total_bytes)} · {fmtBytes(machine.summary.disk_total_bytes)}
-        </span>
-      ) : null}
 
       {/* OS */}
       <span className="text-xs text-slate-400 hidden sm:block">{machine.os}</span>
