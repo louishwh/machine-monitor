@@ -536,6 +536,7 @@ export default function MachinesPage() {
   const toast = useToast();
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [serverUrl, setServerUrl] = useState("");
   const [showIssue, setShowIssue] = useState(false);
   const [detailMachine, setDetailMachine] = useState<Machine | null>(null);
@@ -567,14 +568,15 @@ export default function MachinesPage() {
   }, [fetchMachines]);
 
   async function handleManualRefresh() {
-    setLoading(true);
+    // Silent refresh — update values in place, never tear down the list.
+    setRefreshing(true);
     try {
       const data = await listMachines();
       setMachines(Array.isArray(data) ? data : []);
     } catch (e) {
       toast("err", errMsg(e));
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -584,8 +586,8 @@ export default function MachinesPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-slate-100">机器列表</h2>
         <div className="flex gap-2">
-          <button className="btn-ghost text-sm" onClick={handleManualRefresh}>
-            刷新
+          <button className="btn-ghost text-sm" onClick={handleManualRefresh} disabled={refreshing}>
+            {refreshing ? "刷新中…" : "刷新"}
           </button>
           <button className="btn-primary text-sm" onClick={() => setShowIssue(true)}>
             + 签发机器
@@ -615,8 +617,8 @@ export default function MachinesPage() {
         </div>
       )}
 
-      {/* List */}
-      {loading ? (
+      {/* List — spinner only on the very first load; later refreshes update in place */}
+      {loading && machines.length === 0 ? (
         <div className="flex items-center justify-center py-16">
           <Spinner label="加载机器列表…" />
         </div>
