@@ -12,6 +12,12 @@ pub async fn list_machines(State(st): State<AppState>) -> Json<Value> {
     let mut out = Vec::new();
     for m in machines {
         let online = st.registry.is_online(&m.id).await;
+        // Latest heartbeat summary (cpu/mem/disk %) for at-a-glance list rows.
+        let summary = store::latest_snapshot(&st.pool, &m.id, "summary")
+            .await
+            .ok()
+            .flatten()
+            .and_then(|(j, _ts)| serde_json::from_str::<Value>(&j).ok());
         out.push(json!({
             "id": m.id,
             "name": m.name,
@@ -21,7 +27,8 @@ pub async fn list_machines(State(st): State<AppState>) -> Json<Value> {
             "status": m.status,
             "lastSeen": m.last_seen,
             "online": online,
-            "shellEnabled": m.shell_enabled
+            "shellEnabled": m.shell_enabled,
+            "summary": summary
         }));
     }
     Json(Value::Array(out))

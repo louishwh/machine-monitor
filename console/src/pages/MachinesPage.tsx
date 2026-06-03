@@ -172,10 +172,10 @@ function MachineDetailModal({
   // Revoke state
   const [revoking, setRevoking] = useState(false);
 
-  // Auto-load an overview (host/cpu/mem/disk) when the modal opens.
+  // Auto-load + live-refresh the overview (host/cpu/mem/disk) every 5s.
   useEffect(() => {
     let alive = true;
-    (async () => {
+    const load = async () => {
       const kinds: StatusKind[] = ["host", "cpu", "mem", "disk"];
       const results = await Promise.all(
         kinds.map((k) =>
@@ -188,9 +188,12 @@ function MachineDetailModal({
       const next: Record<string, unknown> = {};
       for (const [k, d] of results) if (d) next[k] = d;
       setStatusData((prev) => ({ ...prev, ...next }));
-    })();
+    };
+    load();
+    const t = setInterval(load, 5000);
     return () => {
       alive = false;
+      clearInterval(t);
     };
   }, [machine.id]);
 
@@ -678,6 +681,15 @@ function MachineRow({ machine, onClick }: { machine: Machine; onClick: () => voi
         <p className="text-sm font-medium text-slate-100 truncate">{machine.name}</p>
         <p className="text-xs text-slate-500 truncate">{machine.hostname}</p>
       </div>
+
+      {/* Live usage mini-bars (from latest heartbeat summary) */}
+      {machine.online && machine.summary && (
+        <div className="hidden md:grid grid-cols-3 gap-2.5 w-52 shrink-0">
+          <MiniUsage label="CPU" pct={machine.summary.cpu_pct ?? 0} />
+          <MiniUsage label="内存" pct={machine.summary.mem_pct ?? 0} />
+          <MiniUsage label="磁盘" pct={machine.summary.disk_pct ?? 0} />
+        </div>
+      )}
 
       {/* OS */}
       <span className="text-xs text-slate-400 hidden sm:block">{machine.os}</span>

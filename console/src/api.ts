@@ -27,6 +27,12 @@ export interface Machine {
   lastSeen: string;
   online: boolean;
   shellEnabled: boolean;
+  summary?: {
+    cpu_pct?: number;
+    mem_pct?: number;
+    disk_pct?: number;
+    uptime_secs?: number;
+  } | null;
 }
 
 export interface ShellResult {
