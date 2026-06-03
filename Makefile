@@ -61,6 +61,16 @@ build-fwctl: ## Build fwctl (operator console CLI) for this host
 	cargo build --release -p fwctl
 	@echo "==> target/release/fwctl"
 
+.PHONY: build-ops-agent
+build-ops-agent: ## Build ops-agent (read-only fleet health observer) for this host
+	cargo build --release -p ops-agent
+	@echo "==> target/release/ops-agent"
+
+.PHONY: watch
+watch: build-ops-agent ## Run the ops-agent observer (make watch SERVER=https://api.example.com/fleet)
+	@test -n "$(SERVER)" || { echo "set SERVER, e.g. SERVER=https://api.example.com/fleet"; exit 1; }
+	./target/release/ops-agent --server $(SERVER)
+
 # ── agent .deb (Debian/Ubuntu; run on Linux or CI) ────────────────────────────
 .PHONY: deb-agent
 deb-agent: ## Build the agent .deb (needs cargo-deb; run on Linux/CI)
@@ -97,7 +107,7 @@ pkg-linux: build-linux ## Tar up linux binaries + packaging files for shipping
 
 # ── everything ────────────────────────────────────────────────────────────────
 .PHONY: dist
-dist: build-linux build-fwctl app ## Build everything: linux binaries + fwctl + app
+dist: build-linux build-fwctl build-ops-agent app ## Build everything: linux binaries + fwctl + ops-agent + app
 
 # ── deploy (parameterized; restarts the systemd service) ──────────────────────
 .PHONY: deploy-server
