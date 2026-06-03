@@ -32,6 +32,9 @@ export interface Machine {
     mem_pct?: number;
     disk_pct?: number;
     uptime_secs?: number;
+    logical_cores?: number;
+    mem_total_bytes?: number;
+    disk_total_bytes?: number;
   } | null;
 }
 

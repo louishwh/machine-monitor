@@ -6,6 +6,15 @@ pub struct StatusSummary {
     pub mem_pct: f32,
     pub disk_pct: f32,
     pub uptime_secs: u64,
+    // Static hardware spec (cheap to read; carried on every heartbeat so the
+    // server/console can show it at a glance). `default` keeps older snapshots
+    // parseable.
+    #[serde(default)]
+    pub logical_cores: u32,
+    #[serde(default)]
+    pub mem_total_bytes: u64,
+    #[serde(default)]
+    pub disk_total_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

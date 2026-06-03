@@ -15,7 +15,7 @@ import {
   type AuditEntry,
 } from "../api";
 import { Modal, Spinner, useToast } from "../ui";
-import { StatusView, OverviewStrip, Pct, fmtUptime } from "../components/StatusViz";
+import { StatusView, OverviewStrip, Pct, fmtUptime, fmtBytes } from "../components/StatusViz";
 
 // ── IssueMachineModal ─────────────────────────────────────────────────────────
 
@@ -299,6 +299,12 @@ function MachineDetailModal({
           {(statusData.host as any)?.uptime_secs != null && (
             <InfoRow label="运行时长" value={fmtUptime((statusData.host as any).uptime_secs)} />
           )}
+          {machine.summary?.logical_cores ? (
+            <InfoRow
+              label="配置"
+              value={`${machine.summary.logical_cores} 核 · ${fmtBytes(machine.summary.mem_total_bytes)} 内存 · ${fmtBytes(machine.summary.disk_total_bytes)} 硬盘`}
+            />
+          ) : null}
         </div>
 
         {/* Live overview strip */}
@@ -691,6 +697,13 @@ function MachineRow({ machine, onClick }: { machine: Machine; onClick: () => voi
           <span className="text-slate-500">磁盘 <Pct v={machine.summary.disk_pct} /></span>
         </div>
       )}
+
+      {/* Hardware spec (cores · RAM · disk) */}
+      {machine.summary?.logical_cores ? (
+        <span className="hidden lg:block text-xs text-slate-500 tabular-nums shrink-0">
+          {machine.summary.logical_cores} 核 · {fmtBytes(machine.summary.mem_total_bytes)} · {fmtBytes(machine.summary.disk_total_bytes)}
+        </span>
+      ) : null}
 
       {/* OS */}
       <span className="text-xs text-slate-400 hidden sm:block">{machine.os}</span>

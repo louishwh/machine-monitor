@@ -25,15 +25,13 @@ pub fn collect_summary() -> StatusSummary {
 
     // Use the first non-removable disk as the "root" disk proxy.
     let disks = Disks::new_with_refreshed_list();
-    let disk_pct = disks
-        .list()
-        .iter()
-        .find(|d| !d.is_removable())
+    let root = disks.list().iter().find(|d| !d.is_removable());
+    let disk_total = root.map(|d| d.total_space()).unwrap_or(0);
+    let disk_pct = root
         .map(|d| {
             let total = d.total_space();
-            let avail = d.available_space();
             if total > 0 {
-                let used = total.saturating_sub(avail);
+                let used = total.saturating_sub(d.available_space());
                 (used as f32 / total as f32 * 100.0).clamp(0.0, 100.0)
             } else {
                 0.0
@@ -46,6 +44,9 @@ pub fn collect_summary() -> StatusSummary {
         mem_pct,
         disk_pct,
         uptime_secs: System::uptime(),
+        logical_cores: sys.cpus().len() as u32,
+        mem_total_bytes: mem_total,
+        disk_total_bytes: disk_total,
     }
 }
 
