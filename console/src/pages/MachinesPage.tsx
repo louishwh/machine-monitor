@@ -15,6 +15,7 @@ import {
   type AuditEntry,
 } from "../api";
 import { Modal, Spinner, useToast } from "../ui";
+import { StatusView, OverviewRings, MiniUsage, fmtUptime } from "../components/StatusViz";
 
 // ── IssueMachineModal ─────────────────────────────────────────────────────────
 
@@ -139,16 +140,7 @@ const STATUS_KINDS: { kind: StatusKind; label: string }[] = [
   { kind: "disk", label: "磁盘" },
   { kind: "net", label: "网络" },
   { kind: "proc", label: "进程" },
-  { kind: "service", label: "服务" },
 ];
-
-function JsonBlock({ data }: { data: unknown }) {
-  return (
-    <pre className="rounded-lg bg-slate-900 border border-slate-700 p-3 text-xs text-slate-300 overflow-auto max-h-64 whitespace-pre-wrap break-all">
-      {JSON.stringify(data, null, 2)}
-    </pre>
-  );
-}
 
 function MachineDetailModal({
   machine,
@@ -179,6 +171,28 @@ function MachineDetailModal({
 
   // Revoke state
   const [revoking, setRevoking] = useState(false);
+
+  // Auto-load an overview (host/cpu/mem/disk) when the modal opens.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const kinds: StatusKind[] = ["host", "cpu", "mem", "disk"];
+      const results = await Promise.all(
+        kinds.map((k) =>
+          machineStatus(machine.id, k)
+            .then((d) => [k, d] as const)
+            .catch(() => [k, null] as const)
+        )
+      );
+      if (!alive) return;
+      const next: Record<string, unknown> = {};
+      for (const [k, d] of results) if (d) next[k] = d;
+      setStatusData((prev) => ({ ...prev, ...next }));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [machine.id]);
 
   async function fetchStatus(kind: StatusKind) {
     setActiveKind(kind);
@@ -279,7 +293,17 @@ function MachineDetailModal({
           <InfoRow label="Agent 版本" value={machine.agentVersion} />
           <InfoRow label="状态" value={machine.online ? "在线" : "离线"} />
           <InfoRow label="最后心跳" value={lastSeenStr} />
+          {(statusData.host as any)?.uptime_secs != null && (
+            <InfoRow label="运行时长" value={fmtUptime((statusData.host as any).uptime_secs)} />
+          )}
         </div>
+
+        {/* Live overview gauges */}
+        <OverviewRings
+          cpu={statusData.cpu as any}
+          mem={statusData.mem as any}
+          disk={statusData.disk as any}
+        />
 
         {/* Shell 权限 toggle */}
         <div className="rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2.5">
@@ -375,7 +399,7 @@ function MachineDetailModal({
             <p className="label mb-1">
               {STATUS_KINDS.find((k) => k.kind === activeKind)?.label} 状态
             </p>
-            <JsonBlock data={statusData[activeKind]} />
+            <StatusView kind={activeKind} data={statusData[activeKind]} />
           </div>
         )}
 
@@ -395,10 +419,37 @@ function MachineDetailModal({
             snapshots.length === 0 ? (
               <p className="text-xs text-slate-500">暂无快照</p>
             ) : (
-              <div className="space-y-2 max-h-48 overflow-auto">
-                {snapshots.slice(0, 10).map((snap, i) => (
-                  <JsonBlock key={i} data={snap} />
-                ))}
+              <div className="space-y-1.5 max-h-56 overflow-auto">
+                {snapshots.slice(0, 12).map((snap, i) => {
+                  const s = snap as any;
+                  let parsed: any = {};
+                  try {
+                    parsed = JSON.parse(s.json);
+                  } catch {
+                    /* leave empty */
+                  }
+                  const isSummary = parsed && typeof parsed.cpu_pct === "number";
+                  return (
+                    <div
+                      key={s.id ?? i}
+                      className="rounded border border-slate-700 bg-slate-900/60 px-2.5 py-1.5 text-xs"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="badge bg-slate-700 text-slate-300">{s.kind ?? "?"}</span>
+                        <span className="text-slate-600 whitespace-nowrap">
+                          {s.captured_at ? new Date(s.captured_at).toLocaleString("zh-CN") : ""}
+                        </span>
+                      </div>
+                      {isSummary && (
+                        <div className="mt-1.5 grid grid-cols-3 gap-3">
+                          <MiniUsage label="CPU" pct={parsed.cpu_pct} />
+                          <MiniUsage label="内存" pct={parsed.mem_pct} />
+                          <MiniUsage label="磁盘" pct={parsed.disk_pct} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )
           )}
