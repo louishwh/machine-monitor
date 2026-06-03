@@ -15,7 +15,7 @@ import {
   type AuditEntry,
 } from "../api";
 import { Modal, Spinner, useToast } from "../ui";
-import { StatusView, OverviewRings, MiniUsage, fmtUptime } from "../components/StatusViz";
+import { StatusView, OverviewStrip, Pct, fmtUptime } from "../components/StatusViz";
 
 // ── IssueMachineModal ─────────────────────────────────────────────────────────
 
@@ -301,8 +301,8 @@ function MachineDetailModal({
           )}
         </div>
 
-        {/* Live overview gauges */}
-        <OverviewRings
+        {/* Live overview strip */}
+        <OverviewStrip
           cpu={statusData.cpu as any}
           mem={statusData.mem as any}
           disk={statusData.disk as any}
@@ -435,21 +435,20 @@ function MachineDetailModal({
                   return (
                     <div
                       key={s.id ?? i}
-                      className="rounded border border-slate-700 bg-slate-900/60 px-2.5 py-1.5 text-xs"
+                      className="flex items-baseline gap-3 px-2 py-0.5 text-xs tabular-nums hover:bg-slate-800/40 rounded"
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="badge bg-slate-700 text-slate-300">{s.kind ?? "?"}</span>
-                        <span className="text-slate-600 whitespace-nowrap">
-                          {s.captured_at ? new Date(s.captured_at).toLocaleString("zh-CN") : ""}
+                      {isSummary ? (
+                        <span className="flex items-baseline gap-2.5">
+                          <span className="text-slate-500">C<Pct v={parsed.cpu_pct} /></span>
+                          <span className="text-slate-500">M<Pct v={parsed.mem_pct} /></span>
+                          <span className="text-slate-500">D<Pct v={parsed.disk_pct} /></span>
                         </span>
-                      </div>
-                      {isSummary && (
-                        <div className="mt-1.5 grid grid-cols-3 gap-3">
-                          <MiniUsage label="CPU" pct={parsed.cpu_pct} />
-                          <MiniUsage label="内存" pct={parsed.mem_pct} />
-                          <MiniUsage label="磁盘" pct={parsed.disk_pct} />
-                        </div>
+                      ) : (
+                        <span className="text-slate-400">{s.kind ?? "?"}</span>
                       )}
+                      <span className="ml-auto text-slate-600 whitespace-nowrap">
+                        {s.captured_at ? new Date(s.captured_at).toLocaleTimeString("zh-CN") : ""}
+                      </span>
                     </div>
                   );
                 })}
@@ -580,7 +579,7 @@ export default function MachinesPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-5 space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-slate-100">机器列表</h2>
@@ -627,7 +626,7 @@ export default function MachinesPage() {
           <p className="mt-1 text-xs">使用「签发机器」生成身份令牌，然后在目标机器上运行 Agent</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {machines.map((m) => (
             <MachineRow
               key={m.id}
@@ -662,7 +661,7 @@ function MachineRow({ machine, onClick }: { machine: Machine; onClick: () => voi
 
   return (
     <button
-      className="card w-full flex items-center gap-4 px-4 py-3 text-left hover:border-slate-500 transition"
+      className="card w-full flex items-center gap-4 px-3.5 py-2 text-left hover:border-slate-500 transition"
       onClick={onClick}
     >
       {/* Online badge */}
@@ -682,12 +681,12 @@ function MachineRow({ machine, onClick }: { machine: Machine; onClick: () => voi
         <p className="text-xs text-slate-500 truncate">{machine.hostname}</p>
       </div>
 
-      {/* Live usage mini-bars (from latest heartbeat summary) */}
+      {/* Live usage (color-coded text from latest heartbeat summary) */}
       {machine.online && machine.summary && (
-        <div className="hidden md:grid grid-cols-3 gap-2.5 w-52 shrink-0">
-          <MiniUsage label="CPU" pct={machine.summary.cpu_pct ?? 0} />
-          <MiniUsage label="内存" pct={machine.summary.mem_pct ?? 0} />
-          <MiniUsage label="磁盘" pct={machine.summary.disk_pct ?? 0} />
+        <div className="hidden md:flex items-baseline gap-3 text-xs tabular-nums shrink-0">
+          <span className="text-slate-500">CPU <Pct v={machine.summary.cpu_pct} /></span>
+          <span className="text-slate-500">内存 <Pct v={machine.summary.mem_pct} /></span>
+          <span className="text-slate-500">磁盘 <Pct v={machine.summary.disk_pct} /></span>
         </div>
       )}
 
