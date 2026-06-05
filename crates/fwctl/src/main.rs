@@ -66,6 +66,17 @@ enum Cmd {
         #[arg(long)]
         server_ca: Option<String>,
     },
+    /// Delete offline machines from the server (cleanup stale records)
+    Prune {
+        #[arg(long)]
+        server: String,
+        /// Path to server CA PEM (for https:// with self-signed cert)
+        #[arg(long)]
+        server_ca: Option<String>,
+        /// Also delete machines that are online (default: only offline)
+        #[arg(long, default_value_t = false)]
+        all: bool,
+    },
 }
 
 fn key_path(s: &str) -> PathBuf {
@@ -104,6 +115,28 @@ fn http(ca_path: Option<&str>) -> anyhow::Result<reqwest::Client> {
         builder = builder.add_root_certificate(cert);
     }
     Ok(builder.build()?)
+}
+
+/// Signed control-plane DELETE. Signs over `path` with an empty body.
+async fn signed_delete(
+    client: &reqwest::Client,
+    server: &str,
+    path: &str,
+    sk: &SigningKey,
+) -> Result<()> {
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let sig = fw_proto::auth::sign_request(sk, "DELETE", path, &ts, b"");
+    let url = format!("{}{}", server.trim_end_matches('/'), path);
+    let resp = client
+        .delete(&url)
+        .header("x-fw-timestamp", &ts)
+        .header("x-fw-signature", sig)
+        .send()
+        .await?;
+    let status = resp.status();
+    let body = resp.text().await?;
+    anyhow::ensure!(status.is_success(), "DELETE {path} -> {status}: {body}");
+    Ok(())
 }
 
 /// Signed control-plane GET. `sign_path` is the path WITHOUT query string
@@ -206,6 +239,29 @@ async fn main() -> Result<()> {
             let query = format!("?kind={kind}");
             let v = signed_get(&client, &server, &path, &query, &sk).await?;
             println!("{}", serde_json::to_string_pretty(&v)?);
+        }
+        Cmd::Prune { server, server_ca, all } => {
+            let sk = load_key(&kp)?;
+            let client = http(server_ca.as_deref())?;
+            let machines = signed_get(&client, &server, "/api/machines", "", &sk).await?;
+            let list = machines
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            let mut pruned = 0usize;
+            let mut kept = 0usize;
+            for m in &list {
+                let online = m.get("online").and_then(|v| v.as_bool()).unwrap_or(false);
+                let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                if online && !all {
+                    kept += 1;
+                    continue;
+                }
+                let path = format!("/api/machines/{id}");
+                signed_delete(&client, &server, &path, &sk).await?;
+                pruned += 1;
+            }
+            println!("pruned {pruned} offline machines (kept {kept} online)");
         }
     }
     Ok(())

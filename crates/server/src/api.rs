@@ -1,5 +1,6 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -85,6 +86,21 @@ pub struct SnapshotsQuery {
 
 fn default_limit() -> i64 {
     50
+}
+
+/// DELETE /api/machines/:id — remove machine and all its dependent rows.
+/// Also kicks any live WebSocket connection and removes from the in-memory registry.
+pub async fn delete_machine(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    // Best-effort: disconnect any live agent connection and remove from registry.
+    st.conns.kick(&id).await;
+    st.registry.mark_offline(&id).await;
+    match store::delete_machine(&st.pool, &id).await {
+        Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))),
+    }
 }
 
 /// GET /api/machines/:id/snapshots?limit=50

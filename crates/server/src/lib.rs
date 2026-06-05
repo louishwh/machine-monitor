@@ -12,7 +12,7 @@ pub mod conn;
 pub mod dispatch;
 pub mod tls;
 
-use axum::{middleware, routing::{get, patch, post}, Router};
+use axum::{middleware, routing::{delete, get, patch, post}, Router};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -41,6 +41,7 @@ pub fn build_router(state: AppState) -> Router {
     // when the two routers are merged in axum 0.8.
     let protected = Router::new()
         .route("/api/machines", get(api::list_machines))
+        .route("/api/machines/{id}", delete(api::delete_machine))
         .route("/api/machines/{id}/status", get(api::get_machine_status))
         .route("/api/machines/{id}/snapshots", get(api::list_machine_snapshots))
         .route("/api/machines/{id}/shell", patch(admin::patch_shell_enabled))

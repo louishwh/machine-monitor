@@ -253,6 +253,19 @@ pub async fn add_revocation(pool: &SqlitePool, id: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Delete a machine and all its dependent rows (snapshots, command_log, revocations).
+pub async fn delete_machine(pool: &SqlitePool, id: &str) -> anyhow::Result<()> {
+    sqlx::query("DELETE FROM status_snapshots WHERE machine_id = ?")
+        .bind(id).execute(pool).await?;
+    sqlx::query("DELETE FROM command_log WHERE machine_id = ?")
+        .bind(id).execute(pool).await?;
+    sqlx::query("DELETE FROM revocations WHERE machine_id = ?")
+        .bind(id).execute(pool).await?;
+    sqlx::query("DELETE FROM machines WHERE id = ?")
+        .bind(id).execute(pool).await?;
+    Ok(())
+}
+
 /// Delete snapshots older than `days` days. Returns count of deleted rows.
 pub async fn purge_old_snapshots(pool: &SqlitePool, days: i64) -> anyhow::Result<u64> {
     let cutoff = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
@@ -327,6 +340,27 @@ mod tests {
         // Idempotent — second call must not error
         add_revocation(&pool, "m-shell").await.unwrap();
         assert!(is_revoked(&pool, "m-shell").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn delete_machine_removes_row() {
+        let pool = db::init_pool_in_memory().await.unwrap();
+        upsert_machine(&pool, "m-del", "del-box", "host", "linux", "1.0.0")
+            .await.unwrap();
+        // Confirm it exists
+        assert_eq!(list_machines(&pool).await.unwrap().len(), 1);
+        // Add dependent rows
+        save_snapshot(&pool, "m-del", "summary", "{}").await.unwrap();
+        let entry = CommandLogEntry {
+            id: "cmd-del".into(), machine_id: "m-del".into(), kind: "run".into(),
+            request: "ls".into(), exit: Some(0), output: "ok".into(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+        log_command(&pool, &entry).await.unwrap();
+        add_revocation(&pool, "m-del").await.unwrap();
+        // Delete and verify empty
+        delete_machine(&pool, "m-del").await.unwrap();
+        assert!(list_machines(&pool).await.unwrap().is_empty(), "machine row should be gone");
     }
 
     #[tokio::test]
