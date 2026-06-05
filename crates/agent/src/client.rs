@@ -12,13 +12,27 @@ use crate::config::AgentConfig;
 pub async fn run_shell(command: &str, timeout: Duration) -> (i32, String, String) {
     use tokio::io::AsyncReadExt;
 
-    let mut child = match Command::new("sh")
+    // Systemd runs the agent with a minimal environment where HOME is often
+    // unset, so `sh -c` cannot expand `~` (yields "can't cd to ~"). Provide a
+    // sane HOME (and start in it) so tilde / relative paths resolve as a user
+    // would expect. The agent runs as root under systemd → fall back to /root.
+    let home = std::env::var("HOME")
+        .ok()
+        .filter(|h| !h.is_empty() && h != "/")
+        .unwrap_or_else(|| "/root".to_string());
+
+    let mut builder = Command::new("sh");
+    builder
         .arg("-c")
         .arg(command)
+        .env("HOME", &home)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-    {
+        .stderr(std::process::Stdio::piped());
+    if std::path::Path::new(&home).is_dir() {
+        builder.current_dir(&home);
+    }
+
+    let mut child = match builder.spawn() {
         Ok(c) => c,
         Err(e) => return (-1, String::new(), format!("spawn error: {e}")),
     };

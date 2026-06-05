@@ -16,6 +16,7 @@ import {
 } from "../api";
 import { Modal, Spinner, useToast } from "../ui";
 import { StatusView, OverviewStrip, Pct, fmtUptime, fmtBytes } from "../components/StatusViz";
+import TerminalModal from "../components/TerminalModal";
 
 // ── IssueMachineModal ─────────────────────────────────────────────────────────
 
@@ -546,6 +547,7 @@ export default function MachinesPage() {
   const [serverUrl, setServerUrl] = useState("");
   const [showIssue, setShowIssue] = useState(false);
   const [detailMachine, setDetailMachine] = useState<Machine | null>(null);
+  const [terminalMachine, setTerminalMachine] = useState<Machine | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchMachines = useCallback(async () => {
@@ -640,6 +642,7 @@ export default function MachinesPage() {
               key={m.id}
               machine={m}
               onClick={() => setDetailMachine(m)}
+              onOpenTerminal={() => setTerminalMachine(m)}
             />
           ))}
         </div>
@@ -656,13 +659,27 @@ export default function MachinesPage() {
           onRefresh={fetchMachines}
         />
       )}
+      {terminalMachine && (
+        <TerminalModal
+          machine={terminalMachine}
+          onClose={() => setTerminalMachine(null)}
+        />
+      )}
     </div>
   );
 }
 
 // ── MachineRow ────────────────────────────────────────────────────────────────
 
-function MachineRow({ machine, onClick }: { machine: Machine; onClick: () => void }) {
+function MachineRow({
+  machine,
+  onClick,
+  onOpenTerminal,
+}: {
+  machine: Machine;
+  onClick: () => void;
+  onOpenTerminal: () => void;
+}) {
   const lastSeenStr = machine.lastSeen
     ? new Date(machine.lastSeen).toLocaleString("zh-CN")
     : "—";
@@ -672,9 +689,17 @@ function MachineRow({ machine, onClick }: { machine: Machine; onClick: () => voi
   const s = machine.online ? machine.summary : null;
 
   return (
-    <button
-      className="card w-full grid grid-cols-[3rem_minmax(0,1fr)_15rem_4rem_auto] items-center gap-3 px-3.5 py-2 text-left hover:border-slate-500 transition"
+    <div
+      role="button"
+      tabIndex={0}
+      className="card w-full grid grid-cols-[3rem_minmax(0,1fr)_15rem_4rem_auto] items-center gap-3 px-3.5 py-2 text-left cursor-pointer hover:border-slate-500 transition"
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
     >
       {/* Online badge */}
       <span
@@ -707,12 +732,33 @@ function MachineRow({ machine, onClick }: { machine: Machine; onClick: () => voi
       {/* OS */}
       <span className="text-xs text-slate-400 truncate">{machine.os}</span>
 
-      {/* Last seen + arrow */}
+      {/* Last seen + shell + arrow */}
       <span className="flex items-center gap-2 justify-end whitespace-nowrap">
         <span className="text-xs text-slate-500">{lastSeenStr}</span>
+        <button
+          className="shrink-0 rounded p-1 text-slate-500 hover:text-emerald-300 hover:bg-slate-700/60 transition"
+          title="打开终端"
+          aria-label="打开终端"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenTerminal();
+          }}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M6.75 7.5l3 2.25-3 2.25M11.25 12h3M5.25 3.75h13.5A2.25 2.25 0 0 1 21 6v12a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18V6a2.25 2.25 0 0 1 2.25-2.25Z" />
+          </svg>
+        </button>
         <span className="text-slate-600 text-xs">›</span>
       </span>
-    </button>
+    </div>
   );
 }
 
