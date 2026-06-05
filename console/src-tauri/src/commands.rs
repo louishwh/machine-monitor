@@ -13,16 +13,14 @@ use crate::{
 
 // ─────────────────────────── pair_server ────────────────────────────────
 
-/// Pair this console with the server using a one-time pairing token.
-///
-/// Requires a master key to exist; returns an error if none has been generated.
-/// Uses the server URL stored via `set_server_url`.
+/// Pair this console with the ACTIVE server profile using a one-time pairing
+/// token.  Requires both a master key and an active server profile to exist.
 #[tauri::command]
 pub async fn pair_server(pairing_token: String) -> Result<(), AppError> {
-    let server = settings::require_server_url()?;
+    settings::ensure_migrated()?;
+    let profile = settings::require_active_server()?;
     let pk_b64 = master_key::public_key_b64()?.ok_or(AppError::NoMasterKey)?;
-    let ca = settings::get_server_ca()?;
-    api_client::pair(&server, &pairing_token, &pk_b64, ca.as_deref()).await
+    api_client::pair(&profile.url, &pairing_token, &pk_b64, profile.ca.as_deref()).await
 }
 
 // ─────────────────────────── issue_machine ──────────────────────────────
@@ -60,13 +58,13 @@ pub fn issue_machine(name: String) -> Result<IssuedMachine, AppError> {
 
 // ─────────────────────────── list_machines ──────────────────────────────
 
-/// `GET /api/machines` — signed with the master key.
+/// `GET /api/machines` — signed with the master key, targeting the active server.
 #[tauri::command]
 pub async fn list_machines() -> Result<Value, AppError> {
-    let server = settings::require_server_url()?;
+    settings::ensure_migrated()?;
+    let profile = settings::require_active_server()?;
     let sk = master_key::load()?;
-    let ca = settings::get_server_ca()?;
-    api_client::signed_get(&server, "/api/machines", &sk, ca.as_deref()).await
+    api_client::signed_get(&profile.url, "/api/machines", &sk, profile.ca.as_deref()).await
 }
 
 // ─────────────────────────── machine_status ─────────────────────────────
@@ -74,12 +72,11 @@ pub async fn list_machines() -> Result<Value, AppError> {
 /// `GET /api/machines/{id}/status?kind={kind}` — signed over the **path without query**.
 #[tauri::command]
 pub async fn machine_status(id: String, kind: String) -> Result<Value, AppError> {
-    let server = settings::require_server_url()?;
+    settings::ensure_migrated()?;
+    let profile = settings::require_active_server()?;
     let sk = master_key::load()?;
-    let ca = settings::get_server_ca()?;
-    // Path with query for the actual request; signed_get strips the query before signing.
     let path = format!("/api/machines/{id}/status?kind={kind}");
-    api_client::signed_get(&server, &path, &sk, ca.as_deref()).await
+    api_client::signed_get(&profile.url, &path, &sk, profile.ca.as_deref()).await
 }
 
 // ─────────────────────────── machine_snapshots ──────────────────────────
@@ -87,69 +84,65 @@ pub async fn machine_status(id: String, kind: String) -> Result<Value, AppError>
 /// `GET /api/machines/{id}/snapshots` — signed with the master key.
 #[tauri::command]
 pub async fn machine_snapshots(id: String) -> Result<Value, AppError> {
-    let server = settings::require_server_url()?;
+    settings::ensure_migrated()?;
+    let profile = settings::require_active_server()?;
     let sk = master_key::load()?;
-    let ca = settings::get_server_ca()?;
     let path = format!("/api/machines/{id}/snapshots");
-    api_client::signed_get(&server, &path, &sk, ca.as_deref()).await
+    api_client::signed_get(&profile.url, &path, &sk, profile.ca.as_deref()).await
 }
 
 // ─────────────────────────── set_shell ──────────────────────────────────────
 
 /// `PATCH /api/machines/{id}/shell` body `{"enabled": bool}`.
-/// Enables or disables shell access for the given machine.
 #[tauri::command]
 pub async fn set_shell(id: String, enabled: bool) -> Result<Value, AppError> {
-    let server = settings::require_server_url()?;
+    settings::ensure_migrated()?;
+    let profile = settings::require_active_server()?;
     let sk = master_key::load()?;
-    let ca = settings::get_server_ca()?;
     let path = format!("/api/machines/{id}/shell");
     let body = serde_json::json!({ "enabled": enabled });
-    api_client::signed_patch(&server, &path, &body, &sk, ca.as_deref()).await
+    api_client::signed_patch(&profile.url, &path, &body, &sk, profile.ca.as_deref()).await
 }
 
 // ─────────────────────────── run_shell ──────────────────────────────────────
 
 /// `POST /api/machines/{id}/run-shell` body `{"command": string}`.
-/// Returns `{exit, stdout, stderr}`. Returns error if shell is disabled.
 #[tauri::command]
 pub async fn run_shell(id: String, command: String) -> Result<Value, AppError> {
-    let server = settings::require_server_url()?;
+    settings::ensure_migrated()?;
+    let profile = settings::require_active_server()?;
     let sk = master_key::load()?;
-    let ca = settings::get_server_ca()?;
     let path = format!("/api/machines/{id}/run-shell");
     let body = serde_json::json!({ "command": command });
-    api_client::signed_post(&server, &path, &body, &sk, ca.as_deref()).await
+    api_client::signed_post(&profile.url, &path, &body, &sk, profile.ca.as_deref()).await
 }
 
 // ─────────────────────────── revoke_machine ─────────────────────────────────
 
-/// `POST /api/machines/{id}/revoke` — adds the machine to the revocations list
-/// and kicks any live connection.
+/// `POST /api/machines/{id}/revoke` — adds the machine to the revocations list.
 #[tauri::command]
 pub async fn revoke_machine(id: String) -> Result<Value, AppError> {
-    let server = settings::require_server_url()?;
+    settings::ensure_migrated()?;
+    let profile = settings::require_active_server()?;
     let sk = master_key::load()?;
-    let ca = settings::get_server_ca()?;
     let path = format!("/api/machines/{id}/revoke");
     let body = serde_json::json!({});
-    api_client::signed_post(&server, &path, &body, &sk, ca.as_deref()).await
+    api_client::signed_post(&profile.url, &path, &body, &sk, profile.ca.as_deref()).await
 }
 
 // ─────────────────────────── audit ──────────────────────────────────────────
 
 /// `GET /api/audit?machine_id=<id>&limit=100` — returns audit log entries.
-/// `machine_id` is optional; omit to fetch all machines.
 #[tauri::command]
 pub async fn audit(machine_id: Option<String>) -> Result<Value, AppError> {
-    let server = settings::require_server_url()?;
+    settings::ensure_migrated()?;
+    let profile = settings::require_active_server()?;
     let sk = master_key::load()?;
-    let ca = settings::get_server_ca()?;
     let path = match &machine_id {
         Some(mid) => format!("/api/audit?machine_id={mid}&limit=100"),
         None => "/api/audit?limit=100".to_string(),
     };
-    api_client::signed_get(&server, &path, &sk, ca.as_deref()).await
+    api_client::signed_get(&profile.url, &path, &sk, profile.ca.as_deref()).await
 }
 
 // ─────────────────────────── Tests ──────────────────────────────────────

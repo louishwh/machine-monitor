@@ -4,7 +4,7 @@ import {
   issueMachine,
   machineStatus,
   machineSnapshots,
-  getServerUrl,
+  getActiveServer,
   setShell,
   runShell,
   revokeMachine,
@@ -560,8 +560,8 @@ export default function MachinesPage() {
   }, []);
 
   useEffect(() => {
-    getServerUrl()
-      .then((url) => setServerUrl(url ?? ""))
+    getActiveServer()
+      .then((profile) => setServerUrl(profile?.url ?? ""))
       .catch(() => {});
   }, []);
 

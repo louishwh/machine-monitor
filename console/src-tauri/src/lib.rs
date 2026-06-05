@@ -8,22 +8,27 @@ pub mod settings;
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            // Task 7 — master key
+            // Master key
             master_key::master_status,
             master_key::generate_master_key,
-            // Task 8 — settings
+            // Legacy single-server settings (kept for backward compat)
             settings::get_server_url_cmd,
             settings::set_server_url_cmd,
-            // M6 — server CA (self-signed TLS)
             settings::get_server_ca_cmd,
             settings::set_server_ca_cmd,
-            // Task 8 — control plane
+            // Multi-server profile management
+            settings::list_servers_cmd,
+            settings::add_server_cmd,
+            settings::remove_server_cmd,
+            settings::set_active_server_cmd,
+            settings::get_active_server_cmd,
+            // Control plane
             commands::pair_server,
             commands::issue_machine,
             commands::list_machines,
             commands::machine_status,
             commands::machine_snapshots,
-            // Task 5 — shell / revoke / audit
+            // Shell / revoke / audit
             commands::set_shell,
             commands::run_shell,
             commands::revoke_machine,

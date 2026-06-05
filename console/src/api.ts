@@ -54,6 +54,14 @@ export interface AuditEntry {
   created_at: string;
 }
 
+/** A named server connection profile stored in the OS keychain. */
+export interface ServerProfile {
+  id: string;
+  name: string;
+  url: string;
+  ca: string | null;
+}
+
 // ─── Master key commands ───────────────────────────────────────────────────────
 
 export const masterStatus = () => invoke<MasterStatus>("master_status");
@@ -61,7 +69,7 @@ export const masterStatus = () => invoke<MasterStatus>("master_status");
 export const generateMasterKey = () =>
   invoke<GeneratedKey>("generate_master_key");
 
-// ─── Settings commands ────────────────────────────────────────────────────────
+// ─── Legacy settings commands (kept for backward compat) ──────────────────────
 
 export const getServerUrl = () =>
   invoke<string | null>("get_server_url_cmd");
@@ -75,9 +83,26 @@ export const getServerCa = () =>
 export const setServerCa = (pem: string) =>
   invoke<void>("set_server_ca_cmd", { pem });
 
+// ─── Multi-server profile commands ───────────────────────────────────────────
+
+export const listServers = () =>
+  invoke<ServerProfile[]>("list_servers_cmd");
+
+export const addServer = (name: string, url: string, ca: string | null) =>
+  invoke<ServerProfile>("add_server_cmd", { name, url, ca });
+
+export const removeServer = (id: string) =>
+  invoke<void>("remove_server_cmd", { id });
+
+export const setActiveServer = (id: string) =>
+  invoke<void>("set_active_server_cmd", { id });
+
+export const getActiveServer = () =>
+  invoke<ServerProfile | null>("get_active_server_cmd");
+
 // ─── Pairing commands ─────────────────────────────────────────────────────────
 
-/** Pair the console with the server using a one-time pairing token. */
+/** Pair the console with the ACTIVE server profile using a one-time pairing token. */
 export const pairServer = (pairingToken: string) =>
   invoke<void>("pair_server", { pairingToken });
 
@@ -87,7 +112,7 @@ export const pairServer = (pairingToken: string) =>
 export const issueMachine = (name: string) =>
   invoke<IssuedMachine>("issue_machine", { name });
 
-/** List all known machines from the server. */
+/** List all known machines from the active server. */
 export const listMachines = () =>
   invoke<Machine[]>("list_machines");
 
