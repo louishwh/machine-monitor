@@ -6,6 +6,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::{store, AppState};
 
+/// Constant-time byte comparison so the pairing-token check leaks no timing
+/// information about how many leading bytes matched. (Length is not secret.)
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 #[derive(Deserialize)]
 pub struct PairRequest {
     pub pairing_token: String,
@@ -33,8 +46,11 @@ pub async fn pair(
         return Err((StatusCode::CONFLICT, "already paired".into()));
     }
 
-    // Correct token?
-    if body.pairing_token != *st.pairing_token {
+    // Correct token? Constant-time compare; on failure, delay + log to throttle
+    // and surface brute-force attempts on this publicly reachable endpoint.
+    if !ct_eq(body.pairing_token.as_bytes(), st.pairing_token.as_bytes()) {
+        tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+        tracing::warn!("rejected /api/pair: invalid pairing token");
         return Err((StatusCode::UNAUTHORIZED, "invalid pairing token".into()));
     }
 

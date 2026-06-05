@@ -79,6 +79,20 @@ pub async fn run() -> anyhow::Result<()> {
     } else {
         None
     };
+    // Startup guard: if the server is NOT yet paired, refuse to boot with a
+    // weak/default pairing token — otherwise an attacker on the (publicly
+    // reachable) /api/pair endpoint could pair their own key and take over the
+    // control plane. Already-paired servers ignore the token entirely.
+    if pubkey_bytes.is_none() {
+        let t = cfg.pairing_token.trim();
+        if t == "changeme" || t.len() < 16 {
+            anyhow::bail!(
+                "server is unpaired and `pairing_token` is weak/default; \
+                 set a strong random pairing_token (>= 16 chars) before first pairing"
+            );
+        }
+    }
+
     let console_pubkey = Arc::new(RwLock::new(pubkey_bytes));
     let pairing_token = Arc::new(cfg.pairing_token.clone());
 
