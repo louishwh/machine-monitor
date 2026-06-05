@@ -17,7 +17,10 @@ pub struct Client {
 impl Client {
     pub fn new(server: &str, key_path: &Path, ca_path: Option<&str>) -> Result<Self> {
         let b64 = std::fs::read_to_string(key_path).with_context(|| {
-            format!("read operator key {} (run `fwctl keygen` / `fwctl pair` first)", key_path.display())
+            format!(
+                "read operator key {} (run `fwctl keygen` / `fwctl pair` first)",
+                key_path.display()
+            )
         })?;
         let seed = B64.decode(b64.trim())?;
         let arr: [u8; 32] = seed

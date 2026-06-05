@@ -13,7 +13,10 @@ use fw_proto::token::{sign_identity, IdentityPayload};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "fwctl", about = "FleetWatch headless console (master key / pair / issue)")]
+#[command(
+    name = "fwctl",
+    about = "FleetWatch headless console (master key / pair / issue)"
+)]
 struct Cli {
     /// Path to the master key file (default: ~/.fleetwatch/master.key)
     #[arg(long, global = true, default_value = "")]
@@ -110,8 +113,7 @@ fn pubkey_b64(sk: &SigningKey) -> String {
 /// added as the sole trusted root (for self-signed server certs).  When None,
 /// system roots are used (plain http:// or system-trusted https://).
 fn http(ca_path: Option<&str>) -> anyhow::Result<reqwest::Client> {
-    let mut builder = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(40));
+    let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(40));
     if let Some(path) = ca_path {
         let pem_bytes = std::fs::read(path)
             .with_context(|| format!("failed to read --server-ca file: {path}"))?;
@@ -175,7 +177,10 @@ async fn main() -> Result<()> {
     match cli.cmd {
         Cmd::Keygen => {
             if kp.exists() {
-                anyhow::bail!("主密钥已存在：{}（如确需重置，请手动删除该文件）", kp.display());
+                anyhow::bail!(
+                    "主密钥已存在：{}（如确需重置，请手动删除该文件）",
+                    kp.display()
+                );
             }
             if let Some(dir) = kp.parent() {
                 std::fs::create_dir_all(dir)?;
@@ -214,7 +219,11 @@ async fn main() -> Result<()> {
             anyhow::ensure!(status.is_success(), "配对失败 {status}: {text}");
             println!("配对成功：公钥已注册到 {server}");
         }
-        Cmd::Issue { name, server, machine_id } => {
+        Cmd::Issue {
+            name,
+            server,
+            machine_id,
+        } => {
             let sk = load_key(&kp)?;
             let machine_id = machine_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
             let payload = IdentityPayload {
@@ -226,7 +235,11 @@ async fn main() -> Result<()> {
             println!("machine_id: {machine_id}");
             println!("name:       {name}");
             println!("token:      {token}");
-            let srv = if server.is_empty() { "wss://<server>/agent" } else { &server };
+            let srv = if server.is_empty() {
+                "wss://<server>/agent"
+            } else {
+                &server
+            };
             println!("\n# 在目标机执行：");
             println!("sudo fleetwatch-agent enroll --server {srv} --identity '{token}'");
         }
@@ -236,7 +249,12 @@ async fn main() -> Result<()> {
             let v = signed_get(&client, &server, "/api/machines", "", &sk).await?;
             println!("{}", serde_json::to_string_pretty(&v)?);
         }
-        Cmd::Status { server, id, kind, server_ca } => {
+        Cmd::Status {
+            server,
+            id,
+            kind,
+            server_ca,
+        } => {
             let sk = load_key(&kp)?;
             let client = http(server_ca.as_deref())?;
             let path = format!("/api/machines/{id}/status");
@@ -244,14 +262,15 @@ async fn main() -> Result<()> {
             let v = signed_get(&client, &server, &path, &query, &sk).await?;
             println!("{}", serde_json::to_string_pretty(&v)?);
         }
-        Cmd::Prune { server, server_ca, all } => {
+        Cmd::Prune {
+            server,
+            server_ca,
+            all,
+        } => {
             let sk = load_key(&kp)?;
             let client = http(server_ca.as_deref())?;
             let machines = signed_get(&client, &server, "/api/machines", "", &sk).await?;
-            let list = machines
-                .as_array()
-                .cloned()
-                .unwrap_or_default();
+            let list = machines.as_array().cloned().unwrap_or_default();
             let mut pruned = 0usize;
             let mut kept = 0usize;
             for m in &list {

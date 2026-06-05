@@ -16,7 +16,10 @@ use client::Client;
 use health::{diff, evaluate, Finding, Machine, Severity, Thresholds};
 
 #[derive(Parser)]
-#[command(name = "ops-agent", about = "FleetWatch read-only fleet health observer")]
+#[command(
+    name = "ops-agent",
+    about = "FleetWatch read-only fleet health observer"
+)]
 struct Cli {
     /// Control-plane base URL (e.g. https://api.example.com/fleet)
     #[arg(long)]
@@ -80,7 +83,12 @@ fn full_report(machines: &[Machine], findings: &[Finding]) -> String {
     if !findings.is_empty() {
         s.push_str("  findings:\n");
         for f in findings {
-            s.push_str(&format!("    [{}] {} — {}\n", f.severity.tag(), f.machine_name, f.detail));
+            s.push_str(&format!(
+                "    [{}] {} — {}\n",
+                f.severity.tag(),
+                f.machine_name,
+                f.detail
+            ));
         }
     }
     s
@@ -89,7 +97,11 @@ fn full_report(machines: &[Machine], findings: &[Finding]) -> String {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let th = Thresholds { cpu: cli.cpu, mem: cli.mem, disk: cli.disk };
+    let th = Thresholds {
+        cpu: cli.cpu,
+        mem: cli.mem,
+        disk: cli.disk,
+    };
     let client = Client::new(&cli.server, &key_path(&cli.key), cli.server_ca.as_deref())?;
 
     // One-shot mode
@@ -102,7 +114,12 @@ async fn main() -> Result<()> {
 
     eprintln!(
         "[{}] ops-agent watching {} every {}s (thresholds cpu/mem/disk = {}/{}/{}%) — read-only",
-        now(), cli.server, cli.interval, th.cpu, th.mem, th.disk
+        now(),
+        cli.server,
+        cli.interval,
+        th.cpu,
+        th.mem,
+        th.disk
     );
 
     let mut active: BTreeSet<String> = BTreeSet::new();
@@ -123,8 +140,18 @@ async fn main() -> Result<()> {
         let (newly, resolved) = diff(&active, &findings);
 
         for f in &newly {
-            let mark = if f.severity == Severity::Crit { "🔴" } else { "🟠" };
-            println!("[{}] {mark} ALERT [{}] {} — {}", now(), f.severity.tag(), f.machine_name, f.detail);
+            let mark = if f.severity == Severity::Crit {
+                "🔴"
+            } else {
+                "🟠"
+            };
+            println!(
+                "[{}] {mark} ALERT [{}] {} — {}",
+                now(),
+                f.severity.tag(),
+                f.machine_name,
+                f.detail
+            );
         }
         for key in &resolved {
             let name = key.split(':').next().unwrap_or(key);
@@ -133,7 +160,7 @@ async fn main() -> Result<()> {
 
         active = findings.iter().map(|f| f.key()).collect();
 
-        if cli.report_every > 0 && tick % cli.report_every == 0 {
+        if cli.report_every > 0 && tick.is_multiple_of(cli.report_every) {
             print!("{}", full_report(&machines, &findings));
         }
     }

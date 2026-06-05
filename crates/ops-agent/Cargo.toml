@@ -3,6 +3,7 @@ name = "ops-agent"
 version = "0.1.0"
 edition = "2021"
 description = "FleetWatch ops agent — read-only fleet health observer + alerting (Phase 1)"
+license.workspace = true
 
 [[bin]]
 name = "ops-agent"

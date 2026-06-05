@@ -34,10 +34,7 @@ pub fn ensure_cert(
 
     // Collect SANs: always include localhost + 127.0.0.1, then extras.
     // Skip extras that duplicate the defaults.
-    let mut san_strings: Vec<String> = vec![
-        "localhost".to_string(),
-        "127.0.0.1".to_string(),
-    ];
+    let mut san_strings: Vec<String> = vec!["localhost".to_string(), "127.0.0.1".to_string()];
     for entry in extra_sans {
         let entry = entry.trim().to_string();
         if !entry.is_empty() && entry != "localhost" && entry != "127.0.0.1" {
@@ -45,18 +42,21 @@ pub fn ensure_cert(
         }
     }
 
-    let key_pair = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)
-        .context("generate key pair")?;
+    let key_pair = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).context("generate key pair")?;
 
     let mut params = CertificateParams::new(san_strings).context("build cert params")?;
-    params.distinguished_name.push(DnType::CommonName, "fleetwatch-server");
+    params
+        .distinguished_name
+        .push(DnType::CommonName, "fleetwatch-server");
     // This is an end-entity TLS server cert, NOT a CA cert.
     // Clients using webpki (reqwest, rustls) reject CA certs as end-entity certs.
     params.is_ca = IsCa::NoCa;
     params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
     params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
 
-    let cert = params.self_signed(&key_pair).context("self-sign certificate")?;
+    let cert = params
+        .self_signed(&key_pair)
+        .context("self-sign certificate")?;
 
     let cert_pem_data = cert.pem();
     let key_pem_data = key_pair.serialize_pem();
@@ -93,8 +93,7 @@ pub fn ensure_cert(
 /// Read the certificate PEM from disk.
 pub fn cert_pem(cert_path: impl AsRef<Path>) -> anyhow::Result<String> {
     let path = cert_path.as_ref();
-    std::fs::read_to_string(path)
-        .with_context(|| format!("read cert PEM from {}", path.display()))
+    std::fs::read_to_string(path).with_context(|| format!("read cert PEM from {}", path.display()))
 }
 
 /// Write key file, setting mode 0600 on Unix platforms.
@@ -189,7 +188,10 @@ mod tests {
         let cert_pem_2 = std::fs::read_to_string(&cert).unwrap();
         let key_pem_2 = std::fs::read_to_string(&key).unwrap();
 
-        assert_eq!(cert_pem_1, cert_pem_2, "cert should not change on second call");
+        assert_eq!(
+            cert_pem_1, cert_pem_2,
+            "cert should not change on second call"
+        );
         assert_eq!(key_pem_1, key_pem_2, "key should not change on second call");
     }
 }

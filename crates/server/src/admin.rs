@@ -1,11 +1,11 @@
+use crate::{dispatch, store, AppState};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
+use fw_proto::messages::ServerToAgent;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::time::Duration;
-use fw_proto::messages::ServerToAgent;
-use crate::{dispatch, store, AppState};
 
 // ── PATCH /api/machines/:id/shell ────────────────────────────────────────────
 
@@ -47,7 +47,10 @@ pub async fn post_run_shell(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     if !enabled {
-        return Err((StatusCode::FORBIDDEN, "shell not enabled for this machine".into()));
+        return Err((
+            StatusCode::FORBIDDEN,
+            "shell not enabled for this machine".into(),
+        ));
     }
 
     let cmd_id = uuid::Uuid::new_v4().to_string();
@@ -121,5 +124,7 @@ pub async fn get_audit(
     let rows = store::list_audit(&st.pool, q.machine_id.as_deref(), limit)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    Ok(Json(serde_json::to_value(rows).unwrap_or(Value::Array(vec![]))))
+    Ok(Json(
+        serde_json::to_value(rows).unwrap_or(Value::Array(vec![])),
+    ))
 }

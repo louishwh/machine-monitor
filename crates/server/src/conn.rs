@@ -1,8 +1,8 @@
+use fw_proto::messages::ServerToAgent;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex, Notify, RwLock};
-use fw_proto::messages::ServerToAgent;
 
 /// Result of a command sent to an agent.
 #[derive(Debug, Clone)]
@@ -60,7 +60,10 @@ impl Conns {
         let gen = self.next_gen.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = mpsc::channel(32);
         let kill = Arc::new(Notify::new());
-        self.senders.write().await.insert(id.to_string(), (gen, tx, Arc::clone(&kill)));
+        self.senders
+            .write()
+            .await
+            .insert(id.to_string(), (gen, tx, Arc::clone(&kill)));
         (rx, kill, gen)
     }
 
@@ -177,13 +180,10 @@ mod tests {
 
         // Kick the connection — must wake the waiting task within 500 ms.
         conns.kick("m-1").await;
-        tokio::time::timeout(
-            tokio::time::Duration::from_millis(500),
-            handle,
-        )
-        .await
-        .expect("kick did not signal within timeout")
-        .expect("task panicked");
+        tokio::time::timeout(tokio::time::Duration::from_millis(500), handle)
+            .await
+            .expect("kick did not signal within timeout")
+            .expect("task panicked");
 
         // Sender must be gone after kick.
         assert!(conns.send("m-1", ServerToAgent::Ping).await.is_err());

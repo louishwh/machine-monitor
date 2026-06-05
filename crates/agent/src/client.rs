@@ -1,10 +1,10 @@
+use crate::config::AgentConfig;
+use futures_util::{SinkExt, StreamExt};
+use fw_proto::messages::{AgentToServer, ServerToAgent};
 use std::sync::Arc;
 use std::time::Duration;
-use futures_util::{SinkExt, StreamExt};
 use tokio::process::Command;
 use tokio_tungstenite::tungstenite::Message;
-use fw_proto::messages::{AgentToServer, ServerToAgent};
-use crate::config::AgentConfig;
 
 /// Execute `command` via `sh -c`, capturing stdout/stderr/exit.
 /// If the process does not finish within `timeout`, the child is killed and
@@ -91,7 +91,9 @@ pub fn build_status_result(cmd_id: String, kind: String, arg: Option<String>) ->
     }
 }
 
-pub fn next_backoff(curr: u64) -> u64 { (curr * 2).min(30) }
+pub fn next_backoff(curr: u64) -> u64 {
+    (curr * 2).min(30)
+}
 
 /// Build a rustls-backed TLS connector that trusts ONLY the given PEM certificate.
 /// This is used for wss:// connections to a server with a self-signed cert.
@@ -114,7 +116,11 @@ pub fn build_tls_connector(ca_pem: &str) -> anyhow::Result<tokio_tungstenite::Co
 }
 
 fn detect_os() -> String {
-    if cfg!(target_os = "macos") { "macos".into() } else { "ubuntu".into() }
+    if cfg!(target_os = "macos") {
+        "macos".into()
+    } else {
+        "ubuntu".into()
+    }
 }
 
 pub async fn run_loop(cfg: AgentConfig) {
@@ -155,7 +161,8 @@ async fn connect_once(cfg: &AgentConfig) -> anyhow::Result<()> {
         os: detect_os(),
         agent_version: env!("CARGO_PKG_VERSION").into(),
     };
-    ws.send(Message::Text(serde_json::to_string(&hello)?)).await?;
+    ws.send(Message::Text(serde_json::to_string(&hello)?))
+        .await?;
 
     let mut hb = tokio::time::interval(Duration::from_secs(15));
     loop {
@@ -233,8 +240,7 @@ mod tests {
 
     #[tokio::test]
     async fn run_shell_echo() {
-        let (exit, stdout, stderr) =
-            run_shell("echo hi", Duration::from_secs(5)).await;
+        let (exit, stdout, stderr) = run_shell("echo hi", Duration::from_secs(5)).await;
         assert_eq!(exit, 0, "expected exit 0, got {exit}; stderr: {stderr}");
         assert!(
             stdout.contains("hi"),
@@ -245,10 +251,12 @@ mod tests {
     #[tokio::test]
     async fn run_shell_timeout() {
         // 100ms timeout with a 5-second sleep — must time out.
-        let (exit, _stdout, stderr) =
-            run_shell("sleep 5", Duration::from_millis(100)).await;
+        let (exit, _stdout, stderr) = run_shell("sleep 5", Duration::from_millis(100)).await;
         assert_eq!(exit, -1, "expected exit -1 on timeout, got {exit}");
-        assert_eq!(stderr, "timeout", "expected stderr 'timeout', got: {stderr:?}");
+        assert_eq!(
+            stderr, "timeout",
+            "expected stderr 'timeout', got: {stderr:?}"
+        );
     }
 
     /// build_tls_connector must succeed for a valid self-signed cert PEM.
@@ -258,10 +266,13 @@ mod tests {
         let _ = rustls::crypto::ring::default_provider().install_default();
 
         // Mint a fresh self-signed cert with rcgen.
-        let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()])
-            .expect("rcgen generate");
+        let cert =
+            rcgen::generate_simple_self_signed(vec!["localhost".into()]).expect("rcgen generate");
         let pem = cert.cert.pem();
-        assert!(build_tls_connector(&pem).is_ok(), "expected Ok for valid cert PEM");
+        assert!(
+            build_tls_connector(&pem).is_ok(),
+            "expected Ok for valid cert PEM"
+        );
     }
 
     /// build_tls_connector must return an error for garbage input.

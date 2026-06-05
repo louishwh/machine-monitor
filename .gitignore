@@ -6,6 +6,15 @@ dist/
 # secrets — console master signing key, never commit
 keys/
 *.private.key
+# secrets — server config, TLS material, env, local databases
+server.toml
+*.pem
+*.key
+.env
+.env.*
+*.db
+*.sqlite
+*.sqlite3
 # os
 .DS_Store
 *.local

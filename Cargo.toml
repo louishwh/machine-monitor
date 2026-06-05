@@ -2,6 +2,9 @@
 resolver = "2"
 members = ["crates/proto", "crates/server", "crates/agent", "crates/fwctl", "crates/ops-agent"]
 
+[workspace.package]
+license = "MIT OR Apache-2.0"
+
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

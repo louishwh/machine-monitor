@@ -20,18 +20,42 @@ pub struct StatusSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentToServer {
-    Hello { identity_token: String, hostname: String, os: String, agent_version: String },
-    Heartbeat { summary: Option<StatusSummary> },
-    CommandResult { cmd_id: String, exit: i32, stdout: String, stderr: String, done: bool },
+    Hello {
+        identity_token: String,
+        hostname: String,
+        os: String,
+        agent_version: String,
+    },
+    Heartbeat {
+        summary: Option<StatusSummary>,
+    },
+    CommandResult {
+        cmd_id: String,
+        exit: i32,
+        stdout: String,
+        stderr: String,
+        done: bool,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerToAgent {
-    HelloAck { ok: bool },
-    Reject { reason: String },
-    RunStatus { cmd_id: String, kind: String, arg: Option<String> },
-    RunShell { cmd_id: String, command: String },
+    HelloAck {
+        ok: bool,
+    },
+    Reject {
+        reason: String,
+    },
+    RunStatus {
+        cmd_id: String,
+        kind: String,
+        arg: Option<String>,
+    },
+    RunShell {
+        cmd_id: String,
+        command: String,
+    },
     Ping,
 }
 

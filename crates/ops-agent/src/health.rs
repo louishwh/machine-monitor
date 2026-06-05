@@ -33,7 +33,11 @@ pub struct Thresholds {
 
 impl Default for Thresholds {
     fn default() -> Self {
-        Self { cpu: 90, mem: 90, disk: 90 }
+        Self {
+            cpu: 90,
+            mem: 90,
+            disk: 90,
+        }
     }
 }
 
@@ -91,7 +95,11 @@ pub fn evaluate(machines: &[Machine], th: Thresholds) -> Vec<Finding> {
                     machine_id: m.id.clone(),
                     machine_name: m.name.clone(),
                     kind: kind.into(),
-                    severity: if val >= 95.0 { Severity::Crit } else { Severity::Warn },
+                    severity: if val >= 95.0 {
+                        Severity::Crit
+                    } else {
+                        Severity::Warn
+                    },
                     detail: format!("{label} {:.0}% ≥ {}%", val, limit),
                 });
             }
@@ -124,7 +132,11 @@ mod tests {
             id: id.into(),
             name: id.into(),
             online,
-            summary: Some(Summary { cpu_pct: cpu, mem_pct: mem, disk_pct: disk }),
+            summary: Some(Summary {
+                cpu_pct: cpu,
+                mem_pct: mem,
+                disk_pct: disk,
+            }),
         }
     }
 
@@ -144,16 +156,36 @@ mod tests {
         assert!(keys.contains("down:offline"));
         assert!(!keys.contains("ok:cpu"));
         // 97% disk is critical, 92% cpu is warn
-        assert_eq!(f.iter().find(|x| x.key() == "full:disk").unwrap().severity, Severity::Crit);
-        assert_eq!(f.iter().find(|x| x.key() == "hot:cpu").unwrap().severity, Severity::Warn);
+        assert_eq!(
+            f.iter().find(|x| x.key() == "full:disk").unwrap().severity,
+            Severity::Crit
+        );
+        assert_eq!(
+            f.iter().find(|x| x.key() == "hot:cpu").unwrap().severity,
+            Severity::Warn
+        );
     }
 
     #[test]
     fn diff_reports_new_and_resolved() {
-        let prev: BTreeSet<String> = ["a:cpu".to_string(), "b:offline".to_string()].into_iter().collect();
+        let prev: BTreeSet<String> = ["a:cpu".to_string(), "b:offline".to_string()]
+            .into_iter()
+            .collect();
         let current = vec![
-            Finding { machine_id: "a".into(), machine_name: "a".into(), kind: "cpu".into(), severity: Severity::Warn, detail: "".into() },
-            Finding { machine_id: "c".into(), machine_name: "c".into(), kind: "disk".into(), severity: Severity::Crit, detail: "".into() },
+            Finding {
+                machine_id: "a".into(),
+                machine_name: "a".into(),
+                kind: "cpu".into(),
+                severity: Severity::Warn,
+                detail: "".into(),
+            },
+            Finding {
+                machine_id: "c".into(),
+                machine_name: "c".into(),
+                kind: "disk".into(),
+                severity: Severity::Crit,
+                detail: "".into(),
+            },
         ];
         let (newly, resolved) = diff(&prev, &current);
         // a:cpu still firing (not new), c:disk is new, b:offline resolved

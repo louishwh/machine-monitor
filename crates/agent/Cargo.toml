@@ -3,7 +3,7 @@ name = "fleetwatch-agent"
 version = "0.1.0"
 edition = "2021"
 description = "FleetWatch monitoring agent — reverse-connects to the central server"
-license = "MIT"
+license.workspace = true
 
 # cargo-deb packaging (run `./scripts/build-deb.sh` on a Debian/Ubuntu host).
 [package.metadata.deb]

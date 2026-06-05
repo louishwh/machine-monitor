@@ -3,6 +3,7 @@ name = "fwctl"
 version = "0.1.0"
 edition = "2021"
 description = "FleetWatch headless console CLI — trust-root key, pairing, identity issuance"
+license.workspace = true
 
 [[bin]]
 name = "fwctl"

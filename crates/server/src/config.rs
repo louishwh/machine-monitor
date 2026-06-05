@@ -41,8 +41,7 @@ impl ServerConfig {
         Ok(v)
     }
     pub fn from_env_or_file() -> anyhow::Result<Self> {
-        let path = std::env::var("FW_SERVER_CONFIG")
-            .unwrap_or_else(|_| "server.toml".into());
+        let path = std::env::var("FW_SERVER_CONFIG").unwrap_or_else(|_| "server.toml".into());
         let text = std::fs::read_to_string(&path)?;
         Ok(toml::from_str(&text)?)
     }
@@ -55,8 +54,7 @@ mod tests {
     fn parses_pubkey_from_base64() {
         let cfg = ServerConfig {
             bind: "127.0.0.1:8080".into(),
-            console_public_key_b64: base64::engine::general_purpose::STANDARD
-                .encode([9u8; 32]),
+            console_public_key_b64: base64::engine::general_purpose::STANDARD.encode([9u8; 32]),
             db_path: "/tmp/fw.db".into(),
             pairing_token: "test-token".into(),
             tls_cert_path: default_tls_cert_path(),

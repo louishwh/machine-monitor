@@ -39,9 +39,10 @@ pub async fn require_console_sig(
         .to_string();
 
     // Validate timestamp freshness (±300 s).
-    let ts = chrono::DateTime::parse_from_rfc3339(&ts_str)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
-    let skew = (Utc::now() - ts.with_timezone(&Utc)).num_seconds().unsigned_abs();
+    let ts = chrono::DateTime::parse_from_rfc3339(&ts_str).map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let skew = (Utc::now() - ts.with_timezone(&Utc))
+        .num_seconds()
+        .unsigned_abs();
     if skew > 300 {
         return Err(StatusCode::UNAUTHORIZED);
     }

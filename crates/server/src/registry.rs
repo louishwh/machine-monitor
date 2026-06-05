@@ -8,9 +8,14 @@ pub struct Registry {
 }
 
 impl Registry {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
     pub async fn mark_online(&self, id: &str) {
-        self.online.write().await.insert(id.to_string(), chrono::Utc::now());
+        self.online
+            .write()
+            .await
+            .insert(id.to_string(), chrono::Utc::now());
     }
     pub async fn mark_offline(&self, id: &str) {
         self.online.write().await.remove(id);
@@ -28,7 +33,12 @@ impl Registry {
         self.online.read().await.get(id).copied()
     }
     pub async fn snapshot(&self) -> Vec<(String, chrono::DateTime<chrono::Utc>)> {
-        self.online.read().await.iter().map(|(k, v)| (k.clone(), *v)).collect()
+        self.online
+            .read()
+            .await
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect()
     }
 }
 

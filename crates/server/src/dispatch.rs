@@ -1,13 +1,13 @@
-use std::time::Duration;
-use fw_proto::messages::ServerToAgent;
 use crate::conn::{CommandResult, Conns};
+use fw_proto::messages::ServerToAgent;
+use std::time::Duration;
 
 /// Extract the `cmd_id` embedded in a `ServerToAgent` message.
 /// Returns `None` for messages that carry no cmd_id (Ping, HelloAck, Reject).
 fn extract_cmd_id(msg: &ServerToAgent) -> Option<&str> {
     match msg {
         ServerToAgent::RunStatus { cmd_id, .. } => Some(cmd_id.as_str()),
-        ServerToAgent::RunShell  { cmd_id, .. } => Some(cmd_id.as_str()),
+        ServerToAgent::RunShell { cmd_id, .. } => Some(cmd_id.as_str()),
         _ => None,
     }
 }

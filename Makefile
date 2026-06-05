@@ -16,6 +16,12 @@ CONSOLE      := console
 TAURI        := ./node_modules/.bin/tauri
 VERSION      := $(shell grep -m1 '^version' crates/server/Cargo.toml | cut -d'"' -f2)
 
+# macOS code-signing identity for the console app (opt-in).
+# Empty default => ad-hoc / unsigned build that works for any contributor.
+# To sign locally:  make app SIGN_IDENTITY="Apple Development: Your Name (TEAMID)"
+# Tauri reads APPLE_SIGNING_IDENTITY from the environment.
+SIGN_IDENTITY ?=
+
 # Deploy params (override on the command line):
 #   make deploy-server HOST=root@hz
 #   make deploy-agent  HOST=ubuntu@sg2c4g SUDO=sudo
@@ -100,14 +106,14 @@ app-deps: ## Install console frontend deps
 	cd $(CONSOLE) && pnpm install && (pnpm rebuild esbuild >/dev/null 2>&1 || true)
 
 .PHONY: app
-app: app-deps ## Build the console app (.app/.dmg for this arch)
-	cd $(CONSOLE) && $(TAURI) build
+app: app-deps ## Build the console app (.app/.dmg for this arch; unsigned unless SIGN_IDENTITY set)
+	cd $(CONSOLE) && APPLE_SIGNING_IDENTITY="$(SIGN_IDENTITY)" $(TAURI) build
 	@echo "==> $(CONSOLE)/src-tauri/target/release/bundle/"
 
 .PHONY: app-universal
-app-universal: app-deps ## Build the console app as a universal (arm64+x86_64) bundle
+app-universal: app-deps ## Build the console app as a universal (arm64+x86_64) bundle (unsigned unless SIGN_IDENTITY set)
 	rustup target add x86_64-apple-darwin aarch64-apple-darwin
-	cd $(CONSOLE) && $(TAURI) build --target universal-apple-darwin
+	cd $(CONSOLE) && APPLE_SIGNING_IDENTITY="$(SIGN_IDENTITY)" $(TAURI) build --target universal-apple-darwin
 	@echo "==> $(CONSOLE)/src-tauri/target/universal-apple-darwin/release/bundle/"
 
 # ── distributable bundle (linux tarball: binaries + systemd/launchd + docs) ────

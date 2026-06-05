@@ -44,7 +44,8 @@ mod tests {
     #[tokio::test]
     async fn stale_entries_go_offline() {
         let reg = Registry::new();
-        reg.mark_online_at("m-1", chrono::Utc::now() - chrono::Duration::seconds(90)).await;
+        reg.mark_online_at("m-1", chrono::Utc::now() - chrono::Duration::seconds(90))
+            .await;
         reg.mark_online("m-2").await;
         sweep_once(&reg, 45).await;
         assert!(!reg.is_online("m-1").await);

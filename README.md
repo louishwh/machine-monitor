@@ -1,55 +1,152 @@
-# FleetWatch（群哨）
+# FleetWatch
 
-机器监控与远程查看平台。通过 `apt` / launchd 在每台机器装一个轻量 **agent**，
-agent 持 **管理端签发的身份令牌** 反向长连到中心 **server**；操作者用一个
-**PC 管理端（Tauri 桌面）** 作为唯一入口，随时查看机器状态、下发命令。全栈 Rust。
+> Self-hosted fleet monitoring and remote control for your machines — agents
+> reverse-connect to one central server, an ed25519 master key is the only key
+> to the kingdom. All Rust.
+
+[![CI](https://github.com/louishwh/machine-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/louishwh/machine-monitor/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+
+FleetWatch lets you watch a fleet of machines and run authorized commands on them
+from a single place. You install a lightweight **agent** on each machine; the
+agent dials *out* over a TLS WebSocket to a central **server** (so machines need
+no inbound ports). You drive everything from a **console** (a Tauri desktop app)
+or **`fwctl`** (a headless CLI) — both of which hold an **ed25519 master key**
+that is the trust root: the server never issues credentials, it only verifies
+signatures made with that key. Every control-plane request is ed25519-signed,
+and each agent authenticates with a console-signed identity token that can be
+revoked individually.
+
+## Architecture
 
 ```
-[PC 管理端 console] ──签发机器身份──▶ 令牌 ──装机配置──▶ [Agent]
-   │ 注册公钥(信任锚) / 签名鉴权调用                         │ 持令牌反连 wss
-   ▼                                                         ▼
-[中心服务端 server] ◀──── 用 console 公钥验签，通过才接入 ◀──┘
+              ed25519 master key (trust root)
+                        │
+        ┌───────────────┴───────────────┐
+   [ console ]  (Tauri desktop)     [ fwctl ]  (headless CLI)
+        │  pair · issue identity tokens · sign control-plane calls
+        ▼
+  ┌──────────────────────────────────────────────┐
+  │              server  (Axum, TLS)              │
+  │  /agent  WebSocket hub                        │
+  │  /api/*  signed control plane (no anon UI)    │
+  │  SQLite: registry · status snapshots · audit  │
+  └──────────────────────────────────────────────┘
+        ▲                         ▲
+        │ console-signed          │ wss reverse connection
+        │ identity token          │ heartbeat + status, on-demand pulls
+   [ agent ]                 [ agent ]   ...      (each machine dials out)
 ```
 
-## 组件
+- **`crates/proto`** — shared protocol: WS messages, ed25519 identity tokens, request signing.
+- **`crates/server`** — central server: `/agent` WS hub, `/api/*` signed control plane, SQLite registry/audit, status snapshots, offline scan.
+- **`crates/agent`** — single-binary agent: reverse connect, heartbeat with status summary, on-demand collection (sysinfo), controlled shell (off by default, 30s timeout).
+- **`crates/fwctl`** — headless console CLI: master key, pairing, identity issuance, list/status/prune.
+- **`crates/ops-agent`** — read-only fleet health observer + alerting (no shell, zero blast radius).
+- **`console/`** — Tauri desktop console: master key (file / macOS keychain), pairing, identity issuance, machine list, per-machine terminal, audit, revoke.
 
-- **`crates/proto`** — 共享协议：WS 消息、身份令牌（ed25519 签发/验签）、请求签名。
-- **`crates/server`** — Axum 中心服务端：`/agent` WS Hub、`/api/*` 控制面（签名鉴权）、SQLite、在线注册表、命令分发、状态快照（保留 1 个月）、审计、离线扫描。
-- **`crates/agent`** — 单二进制 agent：反连、心跳带状态摘要、按需采集（sysinfo）、受控 shell（30s 超时）。
-- **`console/`** — Tauri 管理端：信任根主密钥（钥匙串）、配对、签发机器身份、机器列表/状态、命令控制台、审计、吊销。
+## Supported platforms
 
-## 安全模型
+| Component | Platforms |
+|-----------|-----------|
+| server    | Linux x86_64 / aarch64 (static musl) |
+| agent     | Linux x86_64 / aarch64 (static musl, `.deb`); macOS (launchd) |
+| console   | macOS (Tauri app) |
+| fwctl / ops-agent | host-native (built for your dev machine) |
 
-- 管理端是**信任根**：本机 ed25519 主密钥，私钥不出本机。
-- 每台机器一把**唯一身份令牌**（管理端签发，可单独吊销）；server 只验签、不签发。
-- 控制面仅认管理端（请求签名鉴权，无网页 UI、无匿名访问）。
-- 受控 shell 默认关、逐机开、全量审计；吊销实时踢下线且重连被拒。
+## Quickstart
 
-## 开发
+Build the workspace and the operator CLI:
 
 ```bash
-cargo test --workspace          # proto + server + agent 全部测试
 cargo build --workspace
-cd console && pnpm install && pnpm app:dev   # 管理端开发模式
+cargo build --release -p fleetwatch-server -p fwctl
 ```
 
-## 部署 / 打包
+**1. Configure and run the server.** Copy the example config, set a strong
+pairing token, and start:
 
-见 [`packaging/README.md`](packaging/README.md)：server(systemd)、agent(Ubuntu `.deb` / macOS launchd)、console(`tauri build`) 及端到端部署顺序。
+```bash
+cp server.toml.example server.toml
+# edit server.toml — at minimum set a strong pairing_token:
+#   pairing_token = "$(openssl rand -hex 16)"
+# (the server refuses to boot unpaired with a weak/default token)
+./target/release/fleetwatch-server      # reads ./server.toml, or set FW_SERVER_CONFIG
+```
 
-## 设计与计划
+**2. Pair the console (one-time, TOFU).** With `fwctl`:
 
-- 设计：`docs/superpowers/specs/2026-05-30-fleetwatch-design.md`
-- 计划：`docs/superpowers/plans/`（M1–M5）
+```bash
+fwctl keygen                                    # create the master key (~/.fleetwatch/master.key)
+fwctl pubkey                                     # inspect the public key
+fwctl pair --server https://your-server:8443 \
+           --pairing-token <token-from-server.toml> \
+           --server-ca path/to/cert.pem          # CA needed for the self-signed cert
+```
 
-## 里程碑
+Or open the **console** app, generate a master key, point it at the server, and
+pair with the same token.
 
-| | | 状态 |
-|---|---|---|
-| M1 | agent↔server 反连上线链路 | ✅ |
-| M2 | 状态采集 + 按需拉取 + 快照保留 | ✅ |
-| M3 | PC 管理端 + 配对 + 身份签发 + 控制面鉴权 | ✅ |
-| M4 | 受控 shell + 审计 + 吊销 | ✅ |
-| M5 | 打包（.deb / launchd / console bundle） | ✅ |
+**3. Issue a machine identity token:**
 
-v1 之后：告警/通知 → 指标时序图表 → apt 在线源 → agent 自动升级。
+```bash
+fwctl issue --name web-1 --server wss://your-server:8443/agent
+# prints the identity token plus the exact `fleetwatch-agent enroll …` command
+```
+
+**4. Enroll an agent** on the target machine and start it:
+
+```bash
+sudo fleetwatch-agent enroll \
+    --server wss://your-server:8443/agent \
+    --identity '<token-from-step-3>'
+sudo systemctl start fleetwatch-agent     # Linux (.deb); macOS uses launchd
+```
+
+**5. Watch and control.** From the console (or `fwctl list` / `fwctl status`)
+the machine shows up online; pull live status, open a per-machine terminal
+(shell is OFF per machine until you explicitly enable it), review the audit log,
+or revoke the identity.
+
+See [`packaging/README.md`](packaging/README.md) for full deployment (systemd,
+`.deb`, macOS launchd, console bundle) and the end-to-end ordering, and the
+`Makefile` (`make help`) for build/cross-compile/packaging targets.
+
+## Design docs
+
+- Design: `docs/superpowers/specs/2026-05-30-fleetwatch-design.md`
+- Plans: `docs/superpowers/plans/` (M1–M5)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites, build/test/lint
+commands, and conventions, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Note: `make app` builds the console **unsigned** by default so anyone can build
+it. To sign locally, pass your own identity:
+
+```bash
+make app SIGN_IDENTITY="Apple Development: Your Name (TEAMID)"
+```
+
+## Security
+
+FleetWatch is a remote-control tool — please read [SECURITY.md](SECURITY.md) for
+the security model, known limitations, hardening guidance, and how to report a
+vulnerability privately.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+Licensed under either of
+
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.

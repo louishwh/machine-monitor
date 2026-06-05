@@ -1,12 +1,12 @@
+use crate::{dispatch, store, AppState};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
+use fw_proto::messages::{is_known_status_kind, ServerToAgent};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::time::Duration;
-use fw_proto::messages::{is_known_status_kind, ServerToAgent};
-use crate::{dispatch, store, AppState};
 
 pub async fn list_machines(State(st): State<AppState>) -> Json<Value> {
     let machines = store::list_machines(&st.pool).await.unwrap_or_default();
@@ -53,7 +53,10 @@ pub async fn get_machine_status(
     if !is_known_status_kind(&q.kind) {
         return Err((
             StatusCode::BAD_REQUEST,
-            format!("unknown kind {:?}; valid: host cpu mem disk net proc service", q.kind),
+            format!(
+                "unknown kind {:?}; valid: host cpu mem disk net proc service",
+                q.kind
+            ),
         ));
     }
 
@@ -69,8 +72,8 @@ pub async fn get_machine_status(
         .map_err(|e| (StatusCode::BAD_GATEWAY, format!("dispatch failed: {e}")))?;
 
     // Parse stdout as JSON; fall back to wrapping it in a string field.
-    let detail: Value = serde_json::from_str(&result.stdout)
-        .unwrap_or_else(|_| json!({ "raw": result.stdout }));
+    let detail: Value =
+        serde_json::from_str(&result.stdout).unwrap_or_else(|_| json!({ "raw": result.stdout }));
 
     // Persist the snapshot asynchronously — ignore errors (best-effort).
     let _ = store::save_snapshot(&st.pool, &id, &q.kind, &result.stdout).await;
@@ -99,7 +102,10 @@ pub async fn delete_machine(
     st.registry.mark_offline(&id).await;
     match store::delete_machine(&st.pool, &id).await {
         Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        ),
     }
 }
 
@@ -112,5 +118,7 @@ pub async fn list_machine_snapshots(
     let snaps = store::list_snapshots(&st.pool, &id, q.limit)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    Ok(Json(serde_json::to_value(snaps).unwrap_or(Value::Array(vec![]))))
+    Ok(Json(
+        serde_json::to_value(snaps).unwrap_or(Value::Array(vec![])),
+    ))
 }

@@ -43,16 +43,22 @@ CREATE INDEX IF NOT EXISTS idx_cmd_log_machine ON command_log(machine_id, create
 "#;
 
 pub async fn init_pool(db_path: &str) -> anyhow::Result<SqlitePool> {
-    let opts = SqliteConnectOptions::from_str(&format!("sqlite://{db_path}"))?
-        .create_if_missing(true);
-    let pool = SqlitePoolOptions::new().max_connections(4).connect_with(opts).await?;
+    let opts =
+        SqliteConnectOptions::from_str(&format!("sqlite://{db_path}"))?.create_if_missing(true);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect_with(opts)
+        .await?;
     run_migrations(&pool).await?;
     Ok(pool)
 }
 
 pub async fn init_pool_in_memory() -> anyhow::Result<SqlitePool> {
     let opts = SqliteConnectOptions::from_str("sqlite::memory:")?;
-    let pool = SqlitePoolOptions::new().max_connections(1).connect_with(opts).await?;
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(opts)
+        .await?;
     run_migrations(&pool).await?;
     Ok(pool)
 }
@@ -60,10 +66,13 @@ pub async fn init_pool_in_memory() -> anyhow::Result<SqlitePool> {
 pub async fn run_migrations(pool: &SqlitePool) -> anyhow::Result<()> {
     for stmt in SCHEMA.split(';') {
         let s = stmt.trim();
-        if !s.is_empty() { sqlx::query(s).execute(pool).await?; }
+        if !s.is_empty() {
+            sqlx::query(s).execute(pool).await?;
+        }
     }
     // Ensure the singleton server_config row always exists.
     sqlx::query("INSERT OR IGNORE INTO server_config (id) VALUES (1)")
-        .execute(pool).await?;
+        .execute(pool)
+        .await?;
     Ok(())
 }

@@ -1,18 +1,22 @@
-pub mod config;
-pub mod db;
-pub mod store;
-pub mod registry;
+pub mod admin;
 pub mod agent_ws;
 pub mod api;
-pub mod admin;
-pub mod pair;
 pub mod auth;
-pub mod sweeper;
+pub mod config;
 pub mod conn;
+pub mod db;
 pub mod dispatch;
+pub mod pair;
+pub mod registry;
+pub mod store;
+pub mod sweeper;
 pub mod tls;
 
-use axum::{middleware, routing::{delete, get, patch, post}, Router};
+use axum::{
+    middleware,
+    routing::{delete, get, patch, post},
+    Router,
+};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -43,8 +47,14 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/machines", get(api::list_machines))
         .route("/api/machines/{id}", delete(api::delete_machine))
         .route("/api/machines/{id}/status", get(api::get_machine_status))
-        .route("/api/machines/{id}/snapshots", get(api::list_machine_snapshots))
-        .route("/api/machines/{id}/shell", patch(admin::patch_shell_enabled))
+        .route(
+            "/api/machines/{id}/snapshots",
+            get(api::list_machine_snapshots),
+        )
+        .route(
+            "/api/machines/{id}/shell",
+            patch(admin::patch_shell_enabled),
+        )
         .route("/api/machines/{id}/run-shell", post(admin::post_run_shell))
         .route("/api/machines/{id}/revoke", post(admin::post_revoke))
         .route("/api/audit", get(admin::get_audit))
@@ -140,17 +150,10 @@ pub async fn serve_tls(
             match acceptor.accept(tcp_stream).await {
                 Ok(tls_stream) => {
                     let io = TokioIo::new(tls_stream);
-                    let tower_svc = app
-                        .into_make_service()
-                        .call(peer_addr)
-                        .await
-                        .unwrap();
+                    let tower_svc = app.into_make_service().call(peer_addr).await.unwrap();
                     let hyper_svc = TowerToHyperService::new(tower_svc);
                     let builder = AutoBuilder::new(TokioExecutor::new());
-                    if let Err(e) = builder
-                        .serve_connection_with_upgrades(io, hyper_svc)
-                        .await
-                    {
+                    if let Err(e) = builder.serve_connection_with_upgrades(io, hyper_svc).await {
                         tracing::debug!(peer = %peer_addr, err = %e, "connection error");
                     }
                 }
@@ -187,7 +190,9 @@ pub mod test_support {
         let app = build_router(state);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap().to_string();
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
         addr
     }
 
@@ -207,7 +212,9 @@ pub mod test_support {
         let app = build_router(state);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap().to_string();
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
         addr
     }
 }

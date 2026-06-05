@@ -179,7 +179,11 @@ fn collect_proc() -> Value {
 
     // Top 10 by CPU usage
     let mut procs: Vec<_> = sys.processes().values().collect();
-    procs.sort_by(|a, b| b.cpu_usage().partial_cmp(&a.cpu_usage()).unwrap_or(std::cmp::Ordering::Equal));
+    procs.sort_by(|a, b| {
+        b.cpu_usage()
+            .partial_cmp(&a.cpu_usage())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     procs.truncate(10);
 
     let list: Vec<Value> = procs
@@ -220,7 +224,11 @@ fn try_systemctl(svc: &str) -> Option<String> {
         .ok()?;
     // systemctl exits non-zero for inactive, but stdout still has the state string.
     let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if s.is_empty() { None } else { Some(s) }
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
 }
 
 fn try_launchctl(svc: &str) -> Option<String> {

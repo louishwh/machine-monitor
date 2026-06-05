@@ -1,10 +1,10 @@
+use crate::{conn::CommandResult, store, AppState};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::IntoResponse;
+use futures_util::{SinkExt, StreamExt};
 use fw_proto::messages::{AgentToServer, ServerToAgent};
 use fw_proto::token::verify_identity;
-use futures_util::{SinkExt, StreamExt};
-use crate::{conn::CommandResult, store, AppState};
 
 pub async fn handler(ws: WebSocketUpgrade, State(st): State<AppState>) -> impl IntoResponse {
     ws.on_upgrade(move |sock| run(sock, st))
@@ -26,13 +26,26 @@ async fn run(sock: WebSocket, st: AppState) {
             Message::Close(_) => return,
             _ => continue,
         };
-        let Ok(parsed) = serde_json::from_str::<AgentToServer>(&txt) else { continue };
+        let Ok(parsed) = serde_json::from_str::<AgentToServer>(&txt) else {
+            continue;
+        };
         match parsed {
-            AgentToServer::Hello { identity_token, hostname, os, agent_version } => {
+            AgentToServer::Hello {
+                identity_token,
+                hostname,
+                os,
+                agent_version,
+            } => {
                 // Read the shared console public key — reject immediately if unpaired.
                 let pk_guard = st.console_pubkey.read().await;
                 let Some(pk) = pk_guard.as_ref() else {
-                    let _ = send_sink(&mut sink, &ServerToAgent::Reject { reason: "未配对".into() }).await;
+                    let _ = send_sink(
+                        &mut sink,
+                        &ServerToAgent::Reject {
+                            reason: "未配对".into(),
+                        },
+                    )
+                    .await;
                     return;
                 };
                 let payload = match verify_identity(pk, &identity_token) {
@@ -42,17 +55,38 @@ async fn run(sock: WebSocket, st: AppState) {
                     }
                     Err(_) => {
                         drop(pk_guard);
-                        let _ = send_sink(&mut sink, &ServerToAgent::Reject { reason: "身份无效".into() }).await;
+                        let _ = send_sink(
+                            &mut sink,
+                            &ServerToAgent::Reject {
+                                reason: "身份无效".into(),
+                            },
+                        )
+                        .await;
                         return;
                     }
                 };
-                if store::is_revoked(&st.pool, &payload.machine_id).await.unwrap_or(false) {
-                    let _ = send_sink(&mut sink, &ServerToAgent::Reject { reason: "已吊销".into() }).await;
+                if store::is_revoked(&st.pool, &payload.machine_id)
+                    .await
+                    .unwrap_or(false)
+                {
+                    let _ = send_sink(
+                        &mut sink,
+                        &ServerToAgent::Reject {
+                            reason: "已吊销".into(),
+                        },
+                    )
+                    .await;
                     return;
                 }
                 let _ = store::upsert_machine(
-                    &st.pool, &payload.machine_id, &payload.name, &hostname, &os, &agent_version,
-                ).await;
+                    &st.pool,
+                    &payload.machine_id,
+                    &payload.name,
+                    &hostname,
+                    &os,
+                    &agent_version,
+                )
+                .await;
                 st.registry.mark_online(&payload.machine_id).await;
                 let _ = send_sink(&mut sink, &ServerToAgent::HelloAck { ok: true }).await;
                 break payload.machine_id;

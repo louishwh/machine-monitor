@@ -1,6 +1,6 @@
-mod config;
 mod client;
 mod collectors;
+mod config;
 
 use anyhow::Context as _;
 use clap::{Parser, Subcommand};
@@ -42,7 +42,12 @@ async fn main() -> anyhow::Result<()> {
             let cfg = config::AgentConfig::load(&config)?;
             client::run_loop(cfg).await;
         }
-        Cmd::Enroll { server, identity, config, server_ca } => {
+        Cmd::Enroll {
+            server,
+            identity,
+            config,
+            server_ca,
+        } => {
             let mut body = format!("server_url = \"{server}\"\nidentity_token = \"{identity}\"\n");
             if let Some(ca_path) = server_ca {
                 let pem = std::fs::read_to_string(&ca_path)

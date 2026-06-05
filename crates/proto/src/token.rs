@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
-use ed25519_dalek::{Signature, SigningKey, Signer, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -11,11 +11,16 @@ pub struct IdentityPayload {
 
 #[derive(Debug, thiserror::Error)]
 pub enum TokenError {
-    #[error("格式错误")] Format,
-    #[error("base64 解码失败")] B64,
-    #[error("签名验证失败")] Sig,
-    #[error("payload 解析失败")] Payload,
-    #[error("公钥无效")] Key,
+    #[error("格式错误")]
+    Format,
+    #[error("base64 解码失败")]
+    B64,
+    #[error("签名验证失败")]
+    Sig,
+    #[error("payload 解析失败")]
+    Payload,
+    #[error("公钥无效")]
+    Key,
 }
 
 /// token = base64(payload_json).base64(sig)
@@ -59,7 +64,11 @@ mod tests {
     fn tampered_token_is_rejected() {
         let sk = SigningKey::from_bytes(&[7u8; 32]);
         let vk = sk.verifying_key();
-        let payload = IdentityPayload { machine_id: "m-1".into(), name: "x".into(), issued_at: "t".into() };
+        let payload = IdentityPayload {
+            machine_id: "m-1".into(),
+            name: "x".into(),
+            issued_at: "t".into(),
+        };
         let mut token = sign_identity(&sk, &payload);
         token.push('A'); // corrupt signature
         assert!(verify_identity(vk.as_bytes(), &token).is_err());
