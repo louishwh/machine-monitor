@@ -19,6 +19,7 @@ pub fn run() {
             // Multi-server profile management
             settings::list_servers_cmd,
             settings::add_server_cmd,
+            settings::update_server_cmd,
             settings::remove_server_cmd,
             settings::set_active_server_cmd,
             settings::get_active_server_cmd,

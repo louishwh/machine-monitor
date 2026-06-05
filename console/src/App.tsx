@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ToastProvider } from "./ui";
 import ConnectPage from "./pages/ConnectPage";
 import MachinesPage from "./pages/MachinesPage";
+import ServerSettingsModal from "./components/ServerSettingsModal";
 import {
   listServers,
   setActiveServer,
@@ -15,6 +16,7 @@ export default function App() {
   const [view, setView] = useState<View>("machines");
   const [servers, setServers] = useState<ServerProfile[]>([]);
   const [activeServerId, setActiveServerId] = useState<string | null>(null);
+  const [showServerSettings, setShowServerSettings] = useState(false);
 
   // Load server list on mount (also triggers after ConnectPage saves changes).
   function reloadServers() {
@@ -64,21 +66,30 @@ export default function App() {
 
             {/* Server dropdown */}
             <div className="mt-2">
-              {servers.length === 0 ? (
-                <p className="text-xs text-slate-600 italic">未配置服务端</p>
-              ) : (
-                <select
-                  className="w-full rounded bg-slate-800 border border-slate-700 text-slate-300 text-xs px-1.5 py-1 focus:outline-none focus:border-slate-500"
-                  value={activeServerId ?? ""}
-                  onChange={(e) => handleServerChange(e.target.value)}
+              <div className="flex items-center gap-1">
+                {servers.length === 0 ? (
+                  <p className="flex-1 text-xs text-slate-600 italic">未配置服务端</p>
+                ) : (
+                  <select
+                    className="flex-1 min-w-0 rounded bg-slate-800 border border-slate-700 text-slate-300 text-xs px-1.5 py-1 focus:outline-none focus:border-slate-500"
+                    value={activeServerId ?? ""}
+                    onChange={(e) => handleServerChange(e.target.value)}
+                  >
+                    {servers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  className="shrink-0 rounded border border-slate-700 bg-slate-800 px-1.5 py-1 text-xs text-slate-400 hover:text-slate-200 hover:border-slate-500 transition"
+                  title="服务端配置"
+                  onClick={() => setShowServerSettings(true)}
                 >
-                  {servers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              )}
+                  ⚙
+                </button>
+              </div>
               {activeProfile && (
                 <p className="text-xs text-slate-600 truncate mt-0.5 font-mono">
                   {activeProfile.url}
@@ -94,7 +105,7 @@ export default function App() {
             onClick={() => setView("machines")}
           />
           <NavItem
-            label="连接 & 配对"
+            label="连接"
             icon="🔗"
             active={view === "connect"}
             onClick={() => setView("connect")}
@@ -103,19 +114,22 @@ export default function App() {
 
         {/* ── Main ────────────────────────────────────────────────── */}
         <main className="flex-1 overflow-auto">
-          {view === "connect" && (
-            <ConnectPage
-              onServersChanged={reloadServers}
-              activeServerId={activeServerId}
-              onActiveChange={handleServerChange}
-            />
-          )}
+          {view === "connect" && <ConnectPage activeServerId={activeServerId} />}
           {view === "machines" && (
             // key forces MachinesPage to remount (and re-fetch) when active server changes.
             <MachinesPage key={activeServerId ?? "__none__"} />
           )}
         </main>
       </div>
+
+      {showServerSettings && (
+        <ServerSettingsModal
+          activeServerId={activeServerId}
+          onClose={() => setShowServerSettings(false)}
+          onChanged={reloadServers}
+          onActiveChange={handleServerChange}
+        />
+      )}
     </ToastProvider>
   );
 }

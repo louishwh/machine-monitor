@@ -45,6 +45,10 @@ enum Cmd {
         /// The server URL agents should connect to (for the printed enroll cmd)
         #[arg(long, default_value = "")]
         server: String,
+        /// Reuse an existing machine_id (rename in place / re-issue) instead of
+        /// minting a new one. Keeps the machine's history and registry identity.
+        #[arg(long)]
+        machine_id: Option<String>,
     },
     /// List machines (signed control-plane call)
     List {
@@ -210,9 +214,9 @@ async fn main() -> Result<()> {
             anyhow::ensure!(status.is_success(), "配对失败 {status}: {text}");
             println!("配对成功：公钥已注册到 {server}");
         }
-        Cmd::Issue { name, server } => {
+        Cmd::Issue { name, server, machine_id } => {
             let sk = load_key(&kp)?;
-            let machine_id = uuid::Uuid::new_v4().to_string();
+            let machine_id = machine_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
             let payload = IdentityPayload {
                 machine_id: machine_id.clone(),
                 name: name.clone(),

@@ -667,14 +667,18 @@ function MachineRow({ machine, onClick }: { machine: Machine; onClick: () => voi
     ? new Date(machine.lastSeen).toLocaleString("zh-CN")
     : "—";
 
+  // Show live metrics for online machines; offline machines reserve the columns
+  // with "—" so every row's CPU/内存/磁盘 values line up vertically.
+  const s = machine.online ? machine.summary : null;
+
   return (
     <button
-      className="card w-full flex items-center gap-4 px-3.5 py-2 text-left hover:border-slate-500 transition"
+      className="card w-full grid grid-cols-[3rem_minmax(0,1fr)_15rem_4rem_auto] items-center gap-3 px-3.5 py-2 text-left hover:border-slate-500 transition"
       onClick={onClick}
     >
       {/* Online badge */}
       <span
-        className={`badge ${
+        className={`badge justify-self-start ${
           machine.online
             ? "bg-emerald-700/40 text-emerald-300"
             : "bg-slate-700 text-slate-500"
@@ -684,7 +688,7 @@ function MachineRow({ machine, onClick }: { machine: Machine; onClick: () => voi
       </span>
 
       {/* Name + hardware spec (always visible; hostname/IP omitted) */}
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0">
         <p className="text-sm font-medium text-slate-100 truncate">{machine.name}</p>
         {machine.summary?.logical_cores ? (
           <p className="text-xs text-slate-500 truncate tabular-nums">
@@ -693,23 +697,34 @@ function MachineRow({ machine, onClick }: { machine: Machine; onClick: () => voi
         ) : null}
       </div>
 
-      {/* Live usage (color-coded text from latest heartbeat summary) */}
-      {machine.online && machine.summary && (
-        <div className="hidden md:flex items-baseline gap-3 text-xs tabular-nums shrink-0">
-          <span className="text-slate-500">CPU <Pct v={machine.summary.cpu_pct} /></span>
-          <span className="text-slate-500">内存 <Pct v={machine.summary.mem_pct} /></span>
-          <span className="text-slate-500">磁盘 <Pct v={machine.summary.disk_pct} /></span>
-        </div>
-      )}
+      {/* Live usage — fixed 3-column grid so values align across rows */}
+      <div className="grid grid-cols-3 gap-x-3 text-xs tabular-nums">
+        <Metric label="CPU" v={s?.cpu_pct} />
+        <Metric label="内存" v={s?.mem_pct} />
+        <Metric label="磁盘" v={s?.disk_pct} />
+      </div>
 
       {/* OS */}
-      <span className="text-xs text-slate-400 hidden sm:block">{machine.os}</span>
+      <span className="text-xs text-slate-400 truncate">{machine.os}</span>
 
-      {/* Last seen */}
-      <span className="text-xs text-slate-500 whitespace-nowrap">{lastSeenStr}</span>
-
-      {/* Arrow */}
-      <span className="text-slate-600 text-xs">›</span>
+      {/* Last seen + arrow */}
+      <span className="flex items-center gap-2 justify-end whitespace-nowrap">
+        <span className="text-xs text-slate-500">{lastSeenStr}</span>
+        <span className="text-slate-600 text-xs">›</span>
+      </span>
     </button>
+  );
+}
+
+// A single aligned metric cell: label on the left, percentage right-aligned in a
+// fixed-width box so the numbers line up column-to-column down the list.
+function Metric({ label, v }: { label: string; v?: number | null }) {
+  return (
+    <span className="flex items-baseline justify-end gap-1.5">
+      <span className="text-slate-500">{label}</span>
+      <span className="w-9 text-right">
+        <Pct v={v} />
+      </span>
+    </span>
   );
 }

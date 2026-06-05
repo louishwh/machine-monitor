@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "FleetWatch 管理端",
+  "productName": "FleetWatch",
   "version": "0.1.0",
   "identifier": "com.fleetwatch.console",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "FleetWatch 管理端",
+        "title": "FleetWatch",
         "width": 1100,
         "height": 760,
         "minWidth": 800,
@@ -32,6 +32,9 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "signingIdentity": "Apple Development: Wenhe Han (HCPNKS5JSK)"
+    }
   }
 }

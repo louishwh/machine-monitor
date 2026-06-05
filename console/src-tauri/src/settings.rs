@@ -207,6 +207,27 @@ pub fn add_server_cmd(
 }
 
 #[tauri::command]
+pub fn update_server_cmd(
+    id: String,
+    name: String,
+    url: String,
+    ca: Option<String>,
+) -> Result<ServerProfile, crate::error::AppError> {
+    ensure_migrated()?;
+    let mut servers = list_servers()?;
+    let profile = servers
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| AppError::Keyring(format!("server profile {id} not found")))?;
+    profile.name = name;
+    profile.url = url;
+    profile.ca = ca;
+    let updated = profile.clone();
+    save_servers(&servers)?;
+    Ok(updated)
+}
+
+#[tauri::command]
 pub fn remove_server_cmd(id: String) -> Result<(), crate::error::AppError> {
     ensure_migrated()?;
     let mut servers = list_servers()?;

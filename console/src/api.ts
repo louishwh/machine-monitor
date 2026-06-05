@@ -91,6 +91,13 @@ export const listServers = () =>
 export const addServer = (name: string, url: string, ca: string | null) =>
   invoke<ServerProfile>("add_server_cmd", { name, url, ca });
 
+export const updateServer = (
+  id: string,
+  name: string,
+  url: string,
+  ca: string | null
+) => invoke<ServerProfile>("update_server_cmd", { id, name, url, ca });
+
 export const removeServer = (id: string) =>
   invoke<void>("remove_server_cmd", { id });
 
