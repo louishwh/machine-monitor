@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "FleetWatch monitoring agent — reverse-connects to the central server"
 license.workspace = true
+repository.workspace = true
 
 # cargo-deb packaging (run `./scripts/build-deb.sh` on a Debian/Ubuntu host).
 [package.metadata.deb]
@@ -27,7 +28,7 @@ enable = true
 start = false
 
 [dependencies]
-fw-proto = { path = "../proto" }
+fw-proto = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "process", "io-util"] }

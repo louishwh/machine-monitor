@@ -146,6 +146,15 @@ deploy-agent: build-agent ## Deploy+restart agent (make deploy-agent HOST=ubuntu
 	$(SSH) $(HOST) '$(SUDO) install -m755 /tmp/fleetwatch-agent /usr/local/bin/fleetwatch-agent \
 	  && $(SUDO) systemctl restart fleetwatch-agent && $(SUDO) systemctl is-active fleetwatch-agent'
 
+# ── publish (crates.io) ───────────────────────────────────────────────────────
+.PHONY: publish-dry
+publish-dry: ## Dry-run publish all crates to crates.io in dep order (uploads nothing)
+	./scripts/publish-crates.sh
+
+.PHONY: publish
+publish: ## Publish all crates to crates.io in dep order (REAL — needs cargo login)
+	./scripts/publish-crates.sh --execute
+
 # ── clean ─────────────────────────────────────────────────────────────────────
 .PHONY: clean
 clean: ## Remove build artifacts (workspace + console + dist)
