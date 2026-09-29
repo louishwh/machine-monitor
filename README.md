@@ -19,24 +19,8 @@ revoked individually.
 
 ## Architecture
 
-```
-              ed25519 master key (trust root)
-                        │
-        ┌───────────────┴───────────────┐
-   [ console ]  (Tauri desktop)     [ fwctl ]  (headless CLI)
-        │  pair · issue identity tokens · sign control-plane calls
-        ▼
-  ┌──────────────────────────────────────────────┐
-  │              server  (Axum, TLS)              │
-  │  /agent  WebSocket hub                        │
-  │  /api/*  signed control plane (no anon UI)    │
-  │  SQLite: registry · status snapshots · audit  │
-  └──────────────────────────────────────────────┘
-        ▲                         ▲
-        │ console-signed          │ wss reverse connection
-        │ identity token          │ heartbeat + status, on-demand pulls
-   [ agent ]                 [ agent ]   ...      (each machine dials out)
-```
+![FleetWatch architecture](docs/architecture.png)
+*(editable source: [docs/architecture.svg](docs/architecture.svg))*
 
 - **`crates/proto`** — shared protocol: WS messages, ed25519 identity tokens, request signing.
 - **`crates/server`** — central server: `/agent` WS hub, `/api/*` signed control plane, SQLite registry/audit, status snapshots, offline scan.
@@ -53,6 +37,50 @@ revoked individually.
 | agent     | Linux x86_64 / aarch64 (static musl, `.deb`); macOS (launchd) |
 | console   | macOS (Tauri app) |
 | fwctl / ops-agent | host-native (built for your dev machine) |
+
+## Install
+
+Prebuilt packages are published automatically on every `v*` tag: `.deb`
+packages for Ubuntu/Debian via the project APT repository, and the macOS
+console app via Homebrew.
+
+**Ubuntu — agent (each monitored machine):**
+
+```bash
+sudo install -d /etc/apt/keyrings
+curl -fsSL https://louishwh.github.io/machine-monitor/gpg.key \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/fleetwatch.gpg
+echo "deb [signed-by=/etc/apt/keyrings/fleetwatch.gpg] https://louishwh.github.io/machine-monitor stable main" \
+  | sudo tee /etc/apt/sources.list.d/fleetwatch.list
+sudo apt update && sudo apt install fleetwatch-agent
+```
+
+The service is enabled but not started on install — set `server_url` +
+`identity_token` in `/etc/fleetwatch/agent.toml` (from the console's
+*issue machine* step or `fwctl issue`), then
+`sudo systemctl start fleetwatch-agent`.
+
+**Ubuntu — server (one central host):**
+
+```bash
+# same keyring + sources.list.d steps as above, then:
+sudo apt update && sudo apt install fleetwatch-server
+```
+
+Edit `/etc/fleetwatch/server.toml` (set a strong `pairing_token`), then
+`sudo systemctl start fleetwatch-server`. The package creates the
+`fleetwatch` service user and the TLS directory; the server self-signs a
+cert on first boot. See [`packaging/README.md`](packaging/README.md) for the
+full deployment ordering.
+
+**macOS — desktop console:**
+
+```bash
+brew install louishwh/tap/fleetwatch
+```
+
+Unless the release was signed and notarized (see `RELEASING.md`), macOS
+Gatekeeper will ask for confirmation on first launch: right-click → Open.
 
 ## Quickstart
 

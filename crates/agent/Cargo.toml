@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 
 # cargo-deb packaging (run `./scripts/build-deb.sh` on a Debian/Ubuntu host).
+# The systemd unit ships as a plain asset and enabling is handled in the
+# maintainer scripts — do NOT use [package.metadata.deb.systemd-units]: its
+# generated fragments need debhelper's dh_* tools, which are not present on
+# every build host (e.g. macOS cross-packaging).
 [package.metadata.deb]
 maintainer = "louis <louishwh@users.noreply.github.com>"
 copyright = "2026, louis"
@@ -17,15 +21,10 @@ extended-description = "Lightweight agent that connects out to the FleetWatch ce
 assets = [
     ["target/release/fleetwatch-agent", "usr/bin/", "755"],
     ["../../packaging/deb/agent.toml.example", "etc/fleetwatch/agent.toml", "644"],
+    ["../../packaging/deb/fleetwatch-agent.service", "lib/systemd/system/", "644"],
 ]
 conf-files = ["/etc/fleetwatch/agent.toml"]
 maintainer-scripts = "../../packaging/deb/scripts"
-
-[package.metadata.deb.systemd-units]
-unit-scripts = "../../packaging/deb"
-unit-name = "fleetwatch-agent"
-enable = true
-start = false
 
 [dependencies]
 fw-proto = { workspace = true }

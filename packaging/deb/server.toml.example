@@ -1,0 +1,36 @@
+# FleetWatch server configuration (shipped as /etc/fleetwatch/server.toml).
+# This file is a dpkg conffile: package upgrades will NOT overwrite your edits.
+# NEVER commit your real server.toml — it is gitignored.
+
+# Address:port the server listens on (TLS). Use 0.0.0.0 to accept remote agents.
+bind = "0.0.0.0:8443"
+
+# Base64-encoded ed25519 public key of the PC console / fwctl master key — the
+# trust anchor. Leave empty ("") for first boot: the console registers its key
+# via one-time pairing (TOFU). Once paired, the key is stored in the DB and this
+# field is ignored. To pre-provision instead, paste `fwctl pubkey` output here.
+console_public_key_b64 = ""
+
+# Path to the SQLite database file (registry, audit log, status snapshots).
+# /var/lib/fleetwatch is owned by the fleetwatch service user (systemd
+# StateDirectory). Protect this file — the audit log stores commands and their
+# output in plaintext.
+db_path = "/var/lib/fleetwatch/fleetwatch.db"
+
+# One-time secret the console must present to complete pairing.
+# MUST be a strong random value — generate one with:  openssl rand -hex 16
+# The server REFUSES TO BOOT while unpaired if this is left as the placeholder
+# below or shorter than 16 characters. /api/pair is the takeover surface if the
+# server is publicly reachable, so treat this like a password.
+pairing_token = "REPLACE_WITH_openssl_rand_-hex_16"
+
+# TLS certificate + private key (PEM). If the files do not exist, the server
+# generates a self-signed cert on first boot (the deb creates and chowns
+# /etc/fleetwatch/tls for this); agents pin the cert on enrollment.
+tls_cert_path = "/etc/fleetwatch/tls/cert.pem"
+tls_key_path  = "/etc/fleetwatch/tls/key.pem"
+
+# Extra Subject Alternative Names baked into the self-signed cert — list every
+# DNS name or IP that agents will use to reach this server. Example:
+# tls_san = ["fleet.example.com", "203.0.113.10"]
+tls_san = []

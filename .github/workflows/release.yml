@@ -1,0 +1,202 @@
+# Tag-driven release. On `v*` tags this builds the Linux .debs (amd64+arm64,
+# static musl), the macOS universal console app, publishes a GitHub Release,
+# regenerates the signed APT repo on the gh-pages branch, and updates the
+# Homebrew cask in louishwh/homebrew-tap.
+#
+# Required secrets (see RELEASING.md → "One-time setup" for how to create them):
+#   GPG_PRIVATE_KEY      — release signing key; the apt-repo job FAILS without it
+#   HOMEBREW_TAP_TOKEN   — PAT with contents:write on louishwh/homebrew-tap;
+#                          the tap job warns and skips without it
+# Optional secrets (unsigned/ad-hoc app build when absent):
+#   APPLE_SIGNING_IDENTITY, APPLE_API_ISSUER, APPLE_API_KEY_ID, APPLE_API_KEY
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux-deb:
+    name: .deb (${{ matrix.arch }})
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            arch: amd64
+          - target: aarch64-unknown-linux-musl
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Check tag matches crate version
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          ok=0
+          for f in crates/server/Cargo.toml crates/agent/Cargo.toml console/src-tauri/tauri.conf.json; do
+            if grep -q "\"$ver\"" "$f"; then ok=$((ok+1)); else echo "WARNING: $f has no version $ver"; fi
+          done
+          [ "$ok" -eq 3 ] || { echo "tag $GITHUB_REF_NAME does not match all three version files — bump them (RELEASING.md)"; exit 1; }
+
+      - name: Install cross tools
+        run: cargo install cargo-zigbuild cargo-deb --locked
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build static binaries
+        run: cargo zigbuild --release --target ${{ matrix.target }} -p fleetwatch-agent -p fleetwatch-server
+
+      - name: Build .debs
+        run: |
+          cargo deb -p fleetwatch-agent --target ${{ matrix.target }} --no-build
+          cargo deb -p fleetwatch-server --target ${{ matrix.target }} --no-build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.arch }}
+          path: target/debian/*.deb
+          if-no-files-found: error
+
+  macos-app:
+    name: console .dmg (universal)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Notarization uses an App Store Connect API key stored as a single-line
+      # secret; write it to a file where the Tauri bundler expects one.
+      - name: Prepare Apple API key (if provided)
+        env:
+          FW_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          if [ -n "$FW_APPLE_API_KEY" ]; then
+            mkdir -p "$HOME/.fleetwatch-ci"
+            printf '%s\n' "$FW_APPLE_API_KEY" > "$HOME/.fleetwatch-ci/AuthKey.p8"
+            echo "APPLE_API_KEY_PATH=$HOME/.fleetwatch-ci/AuthKey.p8" >> "$GITHUB_ENV"
+          else
+            echo "No APPLE_API_KEY secret — building unsigned/notarization skipped"
+          fi
+
+      - name: Build universal console app
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: make app-universal
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg
+          path: console/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+  github-release:
+    needs: [linux-deb, macos-app]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l artifacts
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
+            --title "FleetWatch $GITHUB_REF_NAME" --generate-notes
+
+  apt-repo:
+    needs: [linux-deb]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: deb-*
+          merge-multiple: true
+
+      - name: Fail early if signing key is missing
+        env:
+          FW_GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: '[ -n "$FW_GPG_PRIVATE_KEY" ] || { echo "::error::GPG_PRIVATE_KEY secret is not set — the apt repo must be signed. See RELEASING.md → One-time setup."; exit 1; }'
+
+      - name: Import GPG signing key
+        env:
+          FW_GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          echo "$FW_GPG_PRIVATE_KEY" | gpg --batch --import
+          keyid="$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/{print $5; exit}')"
+          echo "Using signing key $keyid"
+          echo "FW_GPG_KEY_ID=$keyid" >> "$GITHUB_ENV"
+
+      - name: Fetch existing gh-pages repo
+        run: |
+          url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if ! git clone --depth 1 --branch gh-pages "$url" repo; then
+            echo "no gh-pages branch yet — starting a fresh one"
+            mkdir repo && cd repo && git init -b gh-pages
+            git remote add origin "$url"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Rebuild APT repo
+        run: ./scripts/build-apt-repo.sh repo artifacts/*.deb
+
+      - name: Push gh-pages
+        run: |
+          cd repo
+          git config user.name "fleetwatch-release-bot"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "apt repo: $GITHUB_REF_NAME" || echo "no changes to commit"
+          git push origin gh-pages
+
+  homebrew-tap:
+    needs: [github-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tap token
+        id: check
+        env:
+          FW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$FW_TAP_TOKEN" ]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN not set — skipping cask update. brew users stay on the previous version. See RELEASING.md → One-time setup."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update Homebrew cask
+        if: steps.check.outputs.skip != 'true'
+        env:
+          FW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: ./scripts/publish-tap.sh "$GITHUB_REF_NAME"

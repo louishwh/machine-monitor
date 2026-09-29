@@ -92,7 +92,7 @@ watch: build-ops-agent ## Run the ops-agent observer (make watch SERVER=https://
 	@test -n "$(SERVER)" || { echo "set SERVER, e.g. SERVER=https://api.example.com/fleet"; exit 1; }
 	./target/release/ops-agent --server $(SERVER)
 
-# ── agent .deb (Debian/Ubuntu; run on Linux or CI) ────────────────────────────
+# ── .debs (Debian/Ubuntu; run on Linux or CI, or cross via TARGET) ────────────
 .PHONY: deb-agent
 deb-agent: ## Build the agent .deb (needs cargo-deb; run on Linux/CI)
 	@command -v cargo-deb >/dev/null || cargo install cargo-deb
@@ -100,20 +100,36 @@ deb-agent: ## Build the agent .deb (needs cargo-deb; run on Linux/CI)
 	cargo deb -p fleetwatch-agent --no-build
 	@echo "==> target/debian/*.deb"
 
+.PHONY: deb-server
+deb-server: ## Build the server .deb (needs cargo-deb; run on Linux/CI)
+	@command -v cargo-deb >/dev/null || cargo install cargo-deb
+	cargo build --release -p fleetwatch-server
+	cargo deb -p fleetwatch-server --no-build
+	@echo "==> target/debian/*.deb"
+
+# Both packages for a musl target (static; e.g. make debs TARGET=x86_64-unknown-linux-musl)
+.PHONY: debs
+debs: ## Build agent+server .debs, optionally TARGET=<musl triple> (zig cross)
+	./scripts/build-deb.sh $(TARGET)
+
 # ── console app (Tauri, macOS) ────────────────────────────────────────────────
 .PHONY: app-deps
 app-deps: ## Install console frontend deps
 	cd $(CONSOLE) && pnpm install && (pnpm rebuild esbuild >/dev/null 2>&1 || true)
 
+# SIGN_ENV is empty unless SIGN_IDENTITY was given, so an APPLE_SIGNING_IDENTITY
+# exported into the environment (e.g. by CI) is not clobbered with "".
+SIGN_ENV := $(if $(SIGN_IDENTITY),APPLE_SIGNING_IDENTITY="$(SIGN_IDENTITY)",)
+
 .PHONY: app
 app: app-deps ## Build the console app (.app/.dmg for this arch; unsigned unless SIGN_IDENTITY set)
-	cd $(CONSOLE) && APPLE_SIGNING_IDENTITY="$(SIGN_IDENTITY)" $(TAURI) build
+	cd $(CONSOLE) && $(SIGN_ENV) $(TAURI) build
 	@echo "==> $(CONSOLE)/src-tauri/target/release/bundle/"
 
 .PHONY: app-universal
 app-universal: app-deps ## Build the console app as a universal (arm64+x86_64) bundle (unsigned unless SIGN_IDENTITY set)
 	rustup target add x86_64-apple-darwin aarch64-apple-darwin
-	cd $(CONSOLE) && APPLE_SIGNING_IDENTITY="$(SIGN_IDENTITY)" $(TAURI) build --target universal-apple-darwin
+	cd $(CONSOLE) && $(SIGN_ENV) $(TAURI) build --target universal-apple-darwin
 	@echo "==> $(CONSOLE)/src-tauri/target/universal-apple-darwin/release/bundle/"
 
 # ── distributable bundle (linux tarball: binaries + systemd/launchd + docs) ────

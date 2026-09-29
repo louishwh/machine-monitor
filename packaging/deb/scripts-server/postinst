@@ -1,0 +1,33 @@
+#!/bin/sh
+set -e
+
+# Server deb post-install: create the service user, prepare the TLS dir the
+# server writes its self-signed cert to on first boot, then enable (not start —
+# pairing_token must be set first). All actions are idempotent so upgrades
+# re-run safely.
+
+if [ "$1" = "configure" ]; then
+    if ! getent passwd fleetwatch >/dev/null 2>&1; then
+        useradd --system --user-group \
+            --home-dir /var/lib/fleetwatch --no-create-home \
+            --shell /usr/sbin/nologin fleetwatch
+    fi
+
+    install -d -o fleetwatch -g fleetwatch /etc/fleetwatch/tls
+
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload || true
+        if systemctl is-active --quiet fleetwatch-server.service 2>/dev/null; then
+            systemctl restart fleetwatch-server.service
+            echo "FleetWatch server upgraded and restarted."
+        else
+            systemctl enable fleetwatch-server.service || true
+            echo "FleetWatch server installed."
+            echo "Next: edit /etc/fleetwatch/server.toml (set pairing_token,"
+            echo "      run: openssl rand -hex 16), then:"
+            echo "      systemctl start fleetwatch-server"
+        fi
+    fi
+fi
+
+exit 0

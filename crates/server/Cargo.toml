@@ -14,6 +14,26 @@ path = "src/lib.rs"
 name = "fleetwatch-server"
 path = "src/main.rs"
 
+# cargo-deb packaging (same layout as fleetwatch-agent; built by
+# scripts/build-deb.sh / the release workflow). The systemd unit ships as a
+# plain asset and enabling is handled in the maintainer scripts — do NOT use
+# [package.metadata.deb.systemd-units]: its generated fragments need
+# debhelper's dh_* tools, not present on every build host.
+[package.metadata.deb]
+maintainer = "louis <louishwh@users.noreply.github.com>"
+copyright = "2026, louis"
+section = "admin"
+priority = "optional"
+depends = "$auto"
+extended-description = "Central server for FleetWatch: terminates agent WebSocket connections over TLS, stores machine registry and status snapshots in SQLite, and exposes the signed control plane used by the console, fwctl and ops-agent."
+assets = [
+    ["target/release/fleetwatch-server", "usr/bin/", "755"],
+    ["../../packaging/deb/server.toml.example", "etc/fleetwatch/server.toml", "644"],
+    ["../../packaging/deb/fleetwatch-server.service", "lib/systemd/system/", "644"],
+]
+conf-files = ["/etc/fleetwatch/server.toml"]
+maintainer-scripts = "../../packaging/deb/scripts-server"
+
 [features]
 test-support = []
 
