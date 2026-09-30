@@ -28,6 +28,15 @@ case "$FW_APPLE_SIGNING_IDENTITY" in
     "Developer ID Application: "*) ;;
     *) echo "Public releases require a Developer ID Application identity." >&2; exit 1 ;;
 esac
+: "${FW_APPLE_TEAM_ID:?APPLE_TEAM_ID repository variable is required for signed releases}"
+[[ "$FW_APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || {
+    echo "APPLE_TEAM_ID must be a 10-character Apple team identifier." >&2
+    exit 1
+}
+case "$FW_APPLE_SIGNING_IDENTITY" in
+    *" ($FW_APPLE_TEAM_ID)") ;;
+    *) echo "The signing identity belongs to a different Apple team." >&2; exit 1 ;;
+esac
 
 signing_dir="$RUNNER_TEMP/fleetwatch-apple-signing"
 keychain="$signing_dir/signing.keychain-db"

@@ -103,6 +103,7 @@ jobs:
           FW_APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           FW_APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           FW_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          FW_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         run: bash ./scripts/prepare-apple-signing.sh
 
       - name: Build universal console app
@@ -121,9 +122,13 @@ jobs:
 
       - name: Verify signed and notarized application
         if: steps.apple.outputs.enabled == 'true'
+        env:
+          FW_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         run: |
           app="console/src-tauri/target/universal-apple-darwin/release/bundle/macos/FleetWatch.app"
           codesign --verify --deep --strict --verbose=2 "$app"
+          team_id="$(codesign -dv --verbose=4 "$app" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
+          [ "$team_id" = "$FW_APPLE_TEAM_ID" ] || { echo "Unexpected signing team: $team_id" >&2; exit 1; }
           xcrun stapler validate "$app"
           spctl --assess --type execute --verbose=2 "$app"
 

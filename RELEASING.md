@@ -104,6 +104,12 @@ the crates.io section above.
   - `APPLE_API_KEY_ID`: the Key ID of a **team** App Store Connect API key;
     individual API keys cannot authenticate with `notarytool`.
   - `APPLE_API_KEY`: the private `.p8` file contents, including PEM markers.
+  Also set the repository Actions variable `APPLE_TEAM_ID` to the intended
+  signing team. FleetWatch uses **Waton Group Ltd. (`9LZGRQD7U5`)**:
+  ```sh
+  gh variable set APPLE_TEAM_ID --repo louishwh/machine-monitor --body 9LZGRQD7U5
+  ```
+  Both the imported identity and the final app must match this team.
   With no Apple secrets, the app receives an ad-hoc signature. A partial
   configuration fails before building instead of publishing an incomplete
   signed release. The workflow imports the certificate into a temporary
@@ -112,7 +118,7 @@ the crates.io section above.
   when the build fails.
 
   Use a paid Apple Developer Program team. In Xcode's Apple Accounts settings,
-  select the intended team (for this setup: Waton Group) and check its Team ID
+  select the intended team (for this setup: Waton Group Ltd.) and check its Team ID
   and your certificate-management permissions. An `Apple Development`
   certificate is for development; public distribution outside the App Store
   needs `Developer ID Application`. Create that certificate through the team's
