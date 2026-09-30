@@ -7,7 +7,7 @@ cask "fleetwatch" do
   version "@VERSION@"
   sha256 "@SHA256@"
 
-  url "@URL@"
+  url "https://github.com/louishwh/machine-monitor/releases/download/v#{version}/FleetWatch_#{version}_universal.dmg"
   name "FleetWatch"
   desc "Desktop manager for the FleetWatch machine fleet"
   homepage "https://github.com/louishwh/machine-monitor"
