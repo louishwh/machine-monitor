@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- macOS release signing imports the Developer ID private key into a temporary
+  runner keychain, validates complete credentials, passes the notarization Key
+  ID under Tauri's expected variable and checks Gatekeeper before publishing.
 - Release automation now uploads only `.deb` and `.dmg` files with explicit
   repository context, and configures the `github-pages` environment to accept
   version tags on first setup.

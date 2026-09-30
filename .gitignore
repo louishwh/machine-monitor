@@ -6,6 +6,8 @@ dist/
 # secrets — console master signing key, never commit
 keys/
 *.private.key
+*.p12
+*.p8
 # secrets — server config, TLS material, env, local databases
 server.toml
 *.pem

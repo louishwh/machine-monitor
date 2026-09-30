@@ -94,9 +94,42 @@ the crates.io section above.
   `apt-repo` job fails without this secret. Until the first tagged release
   deploys signed metadata, the APT URL may return 404.
 - **Optional `APPLE_*` secrets** for signed/notarized console builds:
-  `APPLE_SIGNING_IDENTITY` ("Developer ID Application: …"),
-  `APPLE_API_ISSUER`, `APPLE_API_KEY_ID`, `APPLE_API_KEY` (the .p8 contents).
-  Without them the dmg is unsigned.
+  configure all six in the source repository's Actions secrets:
+  - `APPLE_CERTIFICATE`: base64-encoded `.p12` export of the Developer ID
+    Application certificate **and its private key**.
+  - `APPLE_CERTIFICATE_PASSWORD`: the password chosen when exporting the `.p12`.
+  - `APPLE_SIGNING_IDENTITY`: the exact `Developer ID Application: … (TEAMID)`
+    name shown by `security find-identity -v -p codesigning`.
+  - `APPLE_API_ISSUER`: App Store Connect issuer UUID.
+  - `APPLE_API_KEY_ID`: the Key ID of a **team** App Store Connect API key;
+    individual API keys cannot authenticate with `notarytool`.
+  - `APPLE_API_KEY`: the private `.p8` file contents, including PEM markers.
+  With no Apple secrets, the app receives an ad-hoc signature. A partial
+  configuration fails before building instead of publishing an incomplete
+  signed release. The workflow imports the certificate into a temporary
+  runner keychain, notarizes via Tauri, checks the app signature, stapled ticket
+  and Gatekeeper assessment, then removes the keychain and private files even
+  when the build fails.
+
+  Use a paid Apple Developer Program team. In Xcode's Apple Accounts settings,
+  select the intended team (for this setup: Waton Group) and check its Team ID
+  and your certificate-management permissions. An `Apple Development`
+  certificate is for development; public distribution outside the App Store
+  needs `Developer ID Application`. Create that certificate through the team's
+  account holder or an administrator with the applicable certificate access.
+  See [Apple's Developer ID instructions](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/)
+  and [Tauri's macOS signing guide](https://v2.tauri.app/distribute/sign/macos/).
+
+  Export private files to a secure directory outside this repository. The
+  `.p12` can be uploaded without writing a base64 copy to disk:
+  ```sh
+  openssl base64 -A -in /secure/path/DeveloperID.p12 | \
+    gh secret set APPLE_CERTIFICATE --repo louishwh/machine-monitor
+  gh secret set APPLE_API_KEY --repo louishwh/machine-monitor < /secure/path/AuthKey.p8
+  ```
+  Set the remaining values using the repository's Actions secrets page or
+  `gh secret set` interactive prompts. Do not put private keys or passwords in
+  Git, shell arguments, chat messages or workflow logs.
 
 ### URLs users get
 

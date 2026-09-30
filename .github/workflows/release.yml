@@ -6,7 +6,8 @@
 # Required secret (run scripts/setup-apt-publishing.sh; see RELEASING.md):
 #   GPG_PRIVATE_KEY      — release signing key; the apt-repo job FAILS without it
 # Optional secrets (unsigned/ad-hoc app build when absent):
-#   APPLE_SIGNING_IDENTITY, APPLE_API_ISSUER, APPLE_API_KEY_ID, APPLE_API_KEY
+#   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+#   APPLE_API_ISSUER, APPLE_API_KEY_ID, APPLE_API_KEY
 name: release
 
 on:
@@ -93,30 +94,47 @@ jobs:
         with:
           node-version: 20
 
-      # Notarization uses an App Store Connect API key stored as a single-line
-      # secret; write it to a file where the Tauri bundler expects one.
-      - name: Prepare Apple API key (if provided)
+      - name: Prepare Apple certificate and notarization credentials
+        id: apple
         env:
+          FW_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          FW_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          FW_APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          FW_APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          FW_APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           FW_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-        run: |
-          if [ -n "$FW_APPLE_API_KEY" ]; then
-            install -d -m 0700 "$HOME/.fleetwatch-ci"
-            umask 077
-            printf '%s\n' "$FW_APPLE_API_KEY" > "$HOME/.fleetwatch-ci/AuthKey.p8"
-            echo "APPLE_API_KEY_PATH=$HOME/.fleetwatch-ci/AuthKey.p8" >> "$GITHUB_ENV"
-          else
-            echo "No APPLE_API_KEY secret — building unsigned/notarization skipped"
-          fi
+        run: bash ./scripts/prepare-apple-signing.sh
 
       - name: Build universal console app
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          # Tauri expects the key ID under APPLE_API_KEY; the .p8 is a file.
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
+          FW_APPLE_SIGNING_ENABLED: ${{ steps.apple.outputs.enabled }}
         run: |
-          # Tauri treats an empty variable as a named keychain identity.
-          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then unset APPLE_SIGNING_IDENTITY; fi
+          if [ "$FW_APPLE_SIGNING_ENABLED" != true ]; then
+            unset APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_PATH
+            export APPLE_SIGNING_IDENTITY='-'
+          fi
           make app-universal
+
+      - name: Verify signed and notarized application
+        if: steps.apple.outputs.enabled == 'true'
+        run: |
+          app="console/src-tauri/target/universal-apple-darwin/release/bundle/macos/FleetWatch.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          xcrun stapler validate "$app"
+          spctl --assess --type execute --verbose=2 "$app"
+
+      - name: Remove temporary Apple signing material
+        if: always()
+        run: |
+          signing_dir="$RUNNER_TEMP/fleetwatch-apple-signing"
+          trap 'rm -rf "$signing_dir"' EXIT
+          if [ -f "$signing_dir/signing.keychain-db" ]; then
+            security delete-keychain "$signing_dir/signing.keychain-db"
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
