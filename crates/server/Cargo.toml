@@ -1,6 +1,6 @@
 [package]
 name = "fleetwatch-server"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "FleetWatch central server — agent WebSocket hub + signed control plane"
 license.workspace = true

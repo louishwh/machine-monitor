@@ -20,7 +20,7 @@ ops-agent
   (`fwctl`, `ops-agent`, `fw-proto`) may be taken — the dry run warns you.
 
 ### Release steps
-1. Bump versions (all crates share `version = "0.1.0"` per crate `Cargo.toml`;
+1. Bump versions (all crates share one version per crate `Cargo.toml`;
    keep them in sync) and update `CHANGELOG.md`.
 2. Commit, tag: `git tag vX.Y.Z && git push --tags`.
 3. Dry run (uploads nothing, packages + verifies every crate):

@@ -70,8 +70,8 @@ jobs:
 
       - name: Build .debs
         run: |
-          cargo deb -p fleetwatch-agent --target ${{ matrix.target }} --no-build
-          cargo deb -p fleetwatch-server --target ${{ matrix.target }} --no-build
+          cargo deb -p fleetwatch-agent --target ${{ matrix.target }} --no-build --no-strip
+          cargo deb -p fleetwatch-server --target ${{ matrix.target }} --no-build --no-strip
 
       - uses: actions/upload-artifact@v4
         with:
@@ -115,7 +115,10 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-        run: make app-universal
+        run: |
+          # Tauri treats an empty variable as a named keychain identity.
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then unset APPLE_SIGNING_IDENTITY; fi
+          make app-universal
 
       - uses: actions/upload-artifact@v4
         with:

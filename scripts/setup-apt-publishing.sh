@@ -55,4 +55,11 @@ else
     gh api -X POST "$pages_endpoint" -f build_type=workflow > /dev/null
 fi
 
+certificate_state="$(gh api "$pages_endpoint" --jq '.https_certificate.state // ""')"
+if [ "$certificate_state" = approved ]; then
+    gh api -X PUT "$pages_endpoint" -F https_enforced=true > /dev/null
+else
+    echo "Pages certificate is $certificate_state; enable HTTPS enforcement when it is approved."
+fi
+
 echo "Signing and GitHub Pages setup are ready for $repo."

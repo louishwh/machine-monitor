@@ -1,6 +1,6 @@
 [package]
 name = "fwctl"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "FleetWatch headless console CLI — trust-root key, pairing, identity issuance"
 license.workspace = true
