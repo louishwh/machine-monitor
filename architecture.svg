@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="1210" viewBox="0 0 1680 1210" font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2.2" flood-color="#0f172a" flood-opacity="0.14"/>
+    </filter>
+    <marker id="arrViolet" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrOrange" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ea580c"/>
+    </marker>
+    <marker id="arrGreen" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrGray" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrVioletToken" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#a855f7"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1680" height="1210" fill="#f8fafc"/>
+
+  <!-- ══════════ title ══════════ -->
+  <text x="80" y="52" font-size="28" font-weight="700" fill="#0f172a">FleetWatch — System Architecture</text>
+  <text x="80" y="79" font-size="13.5" fill="#64748b">Self-hosted fleet monitoring &amp; remote control · agents reverse-connect to one hub · ed25519 master key is the only trust root · all Rust</text>
+  <text x="1600" y="52" font-size="12.5" fill="#94a3b8" text-anchor="end">github.com/louishwh/machine-monitor</text>
+
+  <!-- ══════════ band 1 · OPERATOR ══════════ -->
+  <rect x="60" y="100" width="1560" height="280" rx="14" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="80" y="128" font-size="13" font-weight="700" letter-spacing="1.5" fill="#6d28d9">OPERATOR · macOS — THE TRUST ROOT LIVES HERE</text>
+
+  <!-- console -->
+  <rect x="100" y="145" width="430" height="145" rx="10" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="120" y="174" font-size="16" font-weight="700" fill="#5b21b6">console — Tauri desktop app</text>
+  <text x="120" y="200" font-size="13" fill="#334155">pair the server (TOFU) · issue identity tokens</text>
+  <text x="120" y="220" font-size="13" fill="#334155">machine list · live status · per-machine terminal</text>
+  <text x="120" y="240" font-size="13" fill="#334155">audit log · revoke</text>
+  <text x="120" y="260" font-size="13" fill="#334155">master key stored in macOS Keychain</text>
+
+  <!-- fwctl -->
+  <rect x="570" y="145" width="430" height="145" rx="10" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="590" y="174" font-size="16" font-weight="700" fill="#5b21b6">fwctl — headless CLI</text>
+  <text x="590" y="200" font-size="13" fill="#334155">keygen · pubkey · pair · issue · list · status · prune</text>
+  <text x="590" y="220" font-size="13" fill="#334155">every /api call ed25519-signed (timestamp + signature)</text>
+  <text x="590" y="240" font-size="13" fill="#334155">--server-ca pins the server's self-signed cert</text>
+  <text x="590" y="260" font-size="13" fill="#334155">master key at ~/.fleetwatch/master.key</text>
+
+  <!-- master key chip -->
+  <line x1="315" y1="290" x2="315" y2="315" stroke="#a78bfa" stroke-width="1.5"/>
+  <line x1="785" y1="290" x2="785" y2="315" stroke="#a78bfa" stroke-width="1.5"/>
+  <rect x="100" y="315" width="900" height="50" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="550" y="346" font-size="15.5" font-weight="700" fill="#92400e" text-anchor="middle">ed25519 MASTER KEY — the only trust root · the server verifies signatures, never mints credentials</text>
+
+  <!-- ops-agent -->
+  <rect x="1060" y="145" width="540" height="220" rx="10" fill="#ffffff" stroke="#f97316" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="1080" y="174" font-size="16" font-weight="700" fill="#9a3412">ops-agent — read-only observer</text>
+  <text x="1080" y="200" font-size="13" fill="#334155">polls GET /api/machines (signed) every 30s</text>
+  <text x="1080" y="220" font-size="13" fill="#334155">threshold checks → alerts (exit code / log)</text>
+  <text x="1080" y="240" font-size="13" fill="#334155">GET-only client; copied master key has full privileges</text>
+  <text x="1080" y="260" font-size="13" fill="#334155">runs on ops infra, holds a copy of the master key</text>
+  <text x="1080" y="280" font-size="13" fill="#334155">CLI-only config: --server --key --interval --once</text>
+  <text x="1080" y="300" font-size="13" fill="#334155">same signed-request scheme as fwctl (x-fw-signature)</text>
+
+  <!-- ══════════ gap 1 · operator → server arrows ══════════ -->
+  <line x1="250" y1="367" x2="250" y2="462" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrViolet)"/>
+  <text x="268" y="404" font-size="13" fill="#334155">HTTPS — ed25519-signed control plane /api/*</text>
+  <text x="268" y="424" font-size="12.5" fill="#64748b">headers: x-fw-timestamp · x-fw-signature</text>
+
+  <line x1="700" y1="367" x2="700" y2="462" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrViolet)"/>
+  <circle cx="691" cy="398" r="10" fill="#7c3aed"/>
+  <text x="691" y="402.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="710" y="404" font-size="13" fill="#334155">POST /api/pair — one-time pairing token</text>
+  <text x="710" y="424" font-size="12.5" fill="#64748b">server stores the console public key (TOFU)</text>
+
+  <line x1="1330" y1="367" x2="1330" y2="462" stroke="#ea580c" stroke-width="2" marker-end="url(#arrOrange)"/>
+  <text x="1348" y="404" font-size="13" fill="#334155">signed GET /api/machines — 30s poll</text>
+  <text x="1348" y="424" font-size="12.5" fill="#64748b">threshold alerts (no shell)</text>
+
+  <!-- ══════════ band 2 · SERVER ══════════ -->
+  <rect x="60" y="470" width="1560" height="330" rx="14" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="80" y="498" font-size="13" font-weight="700" letter-spacing="1.5" fill="#1d4ed8">CENTRAL SERVER · Ubuntu — fleetwatch-server (Axum + SQLite)</text>
+
+  <rect x="90" y="508" width="1500" height="32" rx="8" fill="#ffffff" fill-opacity="0.65" stroke="#bfdbfe" stroke-width="1"/>
+  <text x="840" y="529" font-size="12.5" fill="#1e40af" text-anchor="middle">TLS terminated here — self-signed ECDSA leaf auto-generated on first boot (agents pin it at enroll) · optional Caddy / Nginx reverse proxy in front</text>
+
+  <!-- endpoints box -->
+  <rect x="90" y="552" width="800" height="225" rx="10" fill="#ffffff" stroke="#3b82f6" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="110" y="581" font-size="16" font-weight="700" fill="#1e40af">Axum — HTTP + WebSocket</text>
+  <text x="110" y="607" font-size="13.5" font-weight="700" fill="#0f172a">/agent — agent WebSocket hub</text>
+  <text x="110" y="627" font-size="12.5" fill="#475569">Hello handshake: verify console-signed identity token + revocation list</text>
+  <text x="110" y="646" font-size="12.5" fill="#475569">Conns registry: per-machine tx channel · generation guard · kick on live revoke</text>
+  <text x="110" y="665" font-size="12.5" fill="#475569">pending commands: cmd_id → oneshot result waiter (relay to caller)</text>
+  <text x="110" y="696" font-size="13.5" font-weight="700" fill="#0f172a">/api/* — signed control plane (console · fwctl · ops-agent)</text>
+  <text x="110" y="716" font-size="12.5" fill="#475569">GET/DELETE machines · status · snapshots · POST run-shell · revoke · GET /api/audit</text>
+  <text x="110" y="735" font-size="12.5" fill="#475569">POST /api/pair (pairing token — unauthenticated) · GET /health</text>
+
+  <!-- sqlite box -->
+  <rect x="1170" y="552" width="420" height="225" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="1190" y="581" font-size="16" font-weight="700" fill="#0f172a">SQLite (sqlx)</text>
+  <text x="1190" y="609" font-size="12.5" fill="#475569">machines · server_config</text>
+  <text x="1190" y="628" font-size="12.5" fill="#475569">revocations — identity deny-list</text>
+  <text x="1190" y="647" font-size="12.5" fill="#475569">status_snapshots — 15s heartbeats</text>
+  <text x="1190" y="666" font-size="12.5" fill="#475569">command_log — audit trail</text>
+  <text x="1190" y="685" font-size="12.5" fill="#475569">console public key (persisted post-pairing)</text>
+
+  <line x1="896" y1="664" x2="1164" y2="664" stroke="#64748b" stroke-width="2" marker-start="url(#arrGray)" marker-end="url(#arrGray)"/>
+  <text x="1030" y="654" font-size="12.5" fill="#475569" text-anchor="middle">sqlx</text>
+
+  <!-- ══════════ gap 2 · server ⇄ fleet (wss) ══════════ -->
+  <text x="530" y="833" font-size="14.5" font-weight="700" fill="#0f172a" text-anchor="middle">wss://server:8443/agent — reverse connections · agents dial OUT · no inbound ports</text>
+
+  <line x1="160" y1="884" x2="160" y2="806" stroke="#16a34a" stroke-width="2.5" marker-end="url(#arrGreen)"/>
+  <circle cx="180" cy="855" r="10" fill="#16a34a"/>
+  <text x="180" y="859.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="198" y="859" font-size="12.5" fill="#334155">agent → hub: Hello(identity token) ·</text>
+  <text x="198" y="877" font-size="12.5" fill="#334155">Heartbeat 15s · CommandResult</text>
+
+  <line x1="900" y1="806" x2="900" y2="884" stroke="#16a34a" stroke-width="2.5" marker-end="url(#arrGreen)"/>
+  <circle cx="960" cy="872" r="10" fill="#16a34a"/>
+  <text x="960" y="876.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="978" y="859" font-size="12.5" fill="#334155">hub → agent: RunShell / RunStatus ·</text>
+  <text x="978" y="877" font-size="12.5" fill="#334155">HelloAck / Reject · Ping</text>
+
+  <!-- ══════════ band 3 · FLEET ══════════ -->
+  <rect x="60" y="890" width="1560" height="230" rx="14" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+  <text x="80" y="918" font-size="13" font-weight="700" letter-spacing="1.5" fill="#15803d">MACHINE FLEET — EVERY MONITORED HOST</text>
+
+  <rect x="90" y="935" width="580" height="165" rx="10" fill="#ffffff" stroke="#22c55e" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="110" y="964" font-size="15" font-weight="700" fill="#166534">fleetwatch-agent — runs as root (systemd .deb · launchd macOS)</text>
+  <text x="110" y="990" font-size="12.5" fill="#475569">reverse-connects: wss → /agent · Hello(identity token) → HelloAck</text>
+  <text x="110" y="1009" font-size="12.5" fill="#475569">Heartbeat: StatusSummary — cpu/mem/disk/uptime + hw spec</text>
+  <text x="110" y="1028" font-size="12.5" fill="#475569">RunStatus collectors: sysinfo + systemctl / launchctl</text>
+  <text x="110" y="1047" font-size="12.5" fill="#475569">RunShell: sh -c · 30s timeout · streamed result</text>
+
+  <rect x="710" y="935" width="210" height="165" rx="10" fill="#ffffff" fill-opacity="0.6" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="815" y="1010" font-size="13.5" fill="#166534" text-anchor="middle">fleetwatch-agent</text>
+  <text x="815" y="1030" font-size="12.5" fill="#475569" text-anchor="middle">(more Linux hosts)</text>
+
+  <rect x="960" y="935" width="210" height="165" rx="10" fill="#ffffff" fill-opacity="0.6" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="1065" y="1010" font-size="13.5" fill="#166534" text-anchor="middle">fleetwatch-agent</text>
+  <text x="1065" y="1030" font-size="12.5" fill="#475569" text-anchor="middle">(more Linux hosts)</text>
+
+  <rect x="1210" y="935" width="390" height="165" rx="10" fill="#ffffff" fill-opacity="0.6" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="1230" y="964" font-size="15" font-weight="700" fill="#166534">agent on macOS</text>
+  <text x="1230" y="990" font-size="12.5" fill="#475569">LaunchDaemon (packaging/macos)</text>
+  <text x="1230" y="1009" font-size="12.5" fill="#475569">same protocol · logs to /var/log/fleetwatch-agent.log</text>
+
+  <!-- ══════════ offline identity-token path (on top of bands) ══════════ -->
+  <path d="M 100 217 L 35 217 L 35 1017 L 88 1017" fill="none" stroke="#a855f7" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrVioletToken)"/>
+  <circle cx="35" cy="520" r="11" fill="#a855f7" stroke="#ffffff" stroke-width="2"/>
+  <text x="35" y="524.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text transform="translate(20 640) rotate(-90)" font-size="12" fill="#7c3aed" text-anchor="middle">identity token — console signs offline, handed to the machine at enroll (never passes through the server)</text>
+
+  <!-- ══════════ footer ══════════ -->
+  <line x1="60" y1="1132" x2="1620" y2="1132" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="80" y="1160" font-size="13" fill="#334155" font-weight="600">Flow:  [1] pair once (TOFU)  →  [2] console signs identity tokens  →  [3] agents connect out + heartbeat every 15s  →  [4] operator sends a signed command, server relays over WS, result round-trips ≤ 30s</text>
+  <text x="80" y="1184" font-size="12.5" fill="#64748b">distribution: GitHub Release artifacts · signed APT repo (gh-pages) — apt install fleetwatch-agent | fleetwatch-server · brew install louishwh/tap/fleetwatch · libraries on crates.io</text>
+</svg>

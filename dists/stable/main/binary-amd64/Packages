@@ -1,0 +1,39 @@
+Package: fleetwatch-agent
+Architecture: amd64
+Version: 0.1.1-1
+Priority: optional
+Section: admin
+Maintainer: louis <louishwh@users.noreply.github.com>
+Installed-Size: 4210
+Depends:
+Filename: pool/main/binary-amd64/fleetwatch-agent/fleetwatch-agent_0.1.1-1_amd64.deb
+Size: 1518912
+MD5sum: 7e42ce0ac00070f9a84e752d71f87988
+SHA1: cf88fa9df9779bf2882a108ba45f6c18f6210d0f
+SHA256: 30e961ded1ae16f6057cd8c74e5ddb783919c0de6b6de93377b145136a2c6750
+SHA512: 46b7376807d334fa20dc4ab9fa14fca6ff0634b6c520940b3ea8eb2c9447d27e311b8eba768933579ca765637d1c9d08e47ccd8495cc235e554512684d651536
+Homepage: https://github.com/louishwh/machine-monitor
+Description: FleetWatch monitoring agent — reverse-connects to the central server
+ Lightweight agent that connects out to the FleetWatch central server over wss,
+ reports machine status, and runs operator-authorized commands.
+
+Package: fleetwatch-server
+Architecture: amd64
+Version: 0.1.1-1
+Priority: optional
+Section: admin
+Maintainer: louis <louishwh@users.noreply.github.com>
+Installed-Size: 7696
+Depends:
+Filename: pool/main/binary-amd64/fleetwatch-server/fleetwatch-server_0.1.1-1_amd64.deb
+Size: 2726580
+MD5sum: 8485e585e2f3d78ca8096967b4c76522
+SHA1: 5217e3de30dc8614d75b1fb16bf1695d4d34d360
+SHA256: 1bebc68985780171a5adc92a2623fe4ece9fef88daf1add1f3b99746b9a666d1
+SHA512: 7c79f93ab3c1e0b49fa18f1da71cf8e307d0a816038995268e60ab9a4873c0ceb6b3b3c58926e71f6551ce9befb2b984eaeac49215565c15f4ca7c0ebdc696a2
+Homepage: https://github.com/louishwh/machine-monitor
+Description: FleetWatch central server — agent WebSocket hub + signed control plane
+ Central server for FleetWatch: terminates agent WebSocket connections over TLS,
+ stores machine registry and status snapshots in SQLite, and exposes the signed
+ control plane used by the console, fwctl and ops-agent.
+

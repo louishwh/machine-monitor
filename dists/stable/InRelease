@@ -1,0 +1,42 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA256
+
+Architectures: amd64 arm64
+Codename: stable
+Components: main
+Date: Wed, 30 Sep 2026 02:17:21 +0000
+Description: FleetWatch packages
+Label: FleetWatch
+Origin: FleetWatch
+Suite: stable
+MD5Sum:
+ 1b43c7fdaba2ed8370b185e803a3f755              183 Release
+ 1e4e1220b38b57b566841e69557b7163             1801 main/binary-amd64/Packages
+ 84730024e6c42272f4fc76924bda7dc3              921 main/binary-amd64/Packages.gz
+ 165567ff30a97c5fc5e46694ea13aef0             1801 main/binary-arm64/Packages
+ 3202876dd93de95a49badaf8ee63757a              918 main/binary-arm64/Packages.gz
+SHA1:
+ 1755f5186b0ea24224cbf149627bed631e140b0c              183 Release
+ 86bc2d9f820c421bb19a2cd9aa98b2096f79faa8             1801 main/binary-amd64/Packages
+ c0568c7cabe1b0e05706146e57650575c2e91ad2              921 main/binary-amd64/Packages.gz
+ 769c383fb9cbefbbbeedacae5e4df322fe87a6fe             1801 main/binary-arm64/Packages
+ d8fba166631bdea1a5fc50c6853798509ee644df              918 main/binary-arm64/Packages.gz
+SHA256:
+ a40b7f9ce6888b07813e3f4c22f9f5ae5eb20e18bde94828eaba9c5ec946ac35              183 Release
+ 888875c020e3d39a5078c74c0982dea87f4be33f3bb7501248db0fc1f2811940             1801 main/binary-amd64/Packages
+ fdf7506c41fb64a1c97c535392bc5cbdc6d99022dbc629534854b19ed1a7f083              921 main/binary-amd64/Packages.gz
+ 2634ffa00d631c4280731ea5af220a15f788a7514d97e390b67781e29daa5654             1801 main/binary-arm64/Packages
+ e111e98cf6e23d646a2917406b02f5838bcf403093978277f240f92edeb9c133              918 main/binary-arm64/Packages.gz
+SHA512:
+ d6ca6930925f28b3b24862d17f5e424cff5712f956d34f2f006cb60c0b9f16a99a1585c72b5884d01090b1b1f1307b2999d37e274ed206cd55cc7dda5cb2161d              183 Release
+ 46094f24105d9cbaa86b13d8389f0e8577c2ebf2a3be22cbf176766f6a88972c67a468e63efabd3fba62657c86a2b0d2ed74fdd188b1dfc1b9bc242ce2541085             1801 main/binary-amd64/Packages
+ d7e025840e5c581eac887106b9b9692d504eedb6b4320f0bdfe20cec414eb875746bcb8a50b2819773cc3a31822c1c53d6464540b6384e867fd24285ebad4d73              921 main/binary-amd64/Packages.gz
+ 9c4f0e695e86f6edea3435d6a5393299f2962d2ceb6661c3b73cebca308d8646934e05e2e1ade372ca77536766a8a2759e39eeb95662cff36498818f734ac552             1801 main/binary-arm64/Packages
+ bc647e534efae2948675475cdd3f239781eba3c3e2f722c6828a1da603e78efdaef14b76b54e9e25c096281f40301079c8bb84175c985b16951ec7d04a0565cc              918 main/binary-arm64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iHUEARYIAB0WIQSnCMOjNe9cjXcrz2PqAg6PTlkcNwUCarxxMQAKCRDqAg6PTlkc
+NwpuAQDOAMck+dknm57qzais7EfIOFmY3HSw8FimyEeWqha6OwEAgkHzihJ0t5wo
+37/K/gUVA8gPF0bPyv+QEdBc0PEnrgY=
+=NyzO
+-----END PGP SIGNATURE-----
