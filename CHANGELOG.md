@@ -28,6 +28,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (timestamp window ±300s); agents authenticate with console-signed identity
   tokens.
 
+### Fixed
+- **agent**: timed-out shell commands are now killed and reaped. Tokio does
+  not kill a dropped `Child` by default, so every timed-out command used to
+  survive as an orphan process — a long-running agent accumulated one leaked
+  process per timed-out command (unbounded memory and CPU growth).
+- **agent**: reconnect backoff no longer resets on a fresh connection that the
+  server immediately rejects. A revoked/invalid agent used to reconnect with a
+  full TLS handshake about once per second forever; explicit rejections now
+  back off 5 minutes, and only sessions that stayed up ≥ 60 s reset the
+  backoff to 1 s.
+- **agent**: command execution no longer blocks the agent's session loop — a
+  30 s shell used to stall heartbeats and delay revocation detection. Results
+  are now sent from independent tasks over the shared write half.
+- **server**: the six end-to-end flow tests (`pair`/`auth`/`status`/`shell`/
+  `tls`/`online`) were never compiled — they lived under `src/tests/` with no
+  `mod` declaration. Moved to the conventional `crates/server/tests/`
+  integration-test location so `cargo test` (and CI) actually runs them.
+
 ### Security
 - Pairing hardening: the server refuses to boot while unpaired if
   `pairing_token` is the default/weak value (< 16 chars); the token comparison

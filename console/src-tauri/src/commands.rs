@@ -69,7 +69,7 @@ pub async fn list_machines() -> Result<Value, AppError> {
 
 // ─────────────────────────── machine_status ─────────────────────────────
 
-/// `GET /api/machines/{id}/status?kind={kind}` — signed over the **path without query**.
+/// `GET /api/machines/{id}/status?kind={kind}` — signed with the query string.
 #[tauri::command]
 pub async fn machine_status(id: String, kind: String) -> Result<Value, AppError> {
     settings::ensure_migrated()?;

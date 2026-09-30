@@ -31,13 +31,13 @@ pub async fn dispatch(
         .to_string();
 
     // Register the pending waiter BEFORE sending so we cannot miss the reply.
-    let rx = conns.new_pending(&cmd_id).await;
+    let mut waiter = conns.new_pending(&cmd_id).await;
 
     // Send; if the machine is offline this returns Err immediately.
     conns.send(machine_id, msg).await?;
 
     // Wait with timeout.
-    match tokio::time::timeout(timeout, rx).await {
+    match tokio::time::timeout(timeout, waiter.recv()).await {
         Ok(Ok(result)) => Ok(result),
         Ok(Err(_)) => Err(anyhow::anyhow!("pending oneshot dropped before resolution")),
         Err(_elapsed) => Err(anyhow::anyhow!("dispatch timed out after {timeout:?}")),
@@ -65,5 +65,44 @@ mod tests {
         )
         .await;
         assert!(err.is_err(), "expected Err for offline machine, got Ok");
+        assert_eq!(conns.pending_len(), 0);
+    }
+
+    #[tokio::test]
+    async fn timeout_and_cancellation_remove_pending_waiters() {
+        let conns = Conns::new();
+        let (mut rx, _kill, _gen) = conns.register("m-1").await;
+        let msg = || ServerToAgent::RunStatus {
+            cmd_id: "c-timeout".into(),
+            kind: "host".into(),
+            arg: None,
+        };
+        let result = dispatch(&conns, "m-1", msg(), Duration::from_millis(20)).await;
+        assert!(result.is_err());
+        assert_eq!(conns.pending_len(), 0);
+        assert!(rx.recv().await.is_some());
+
+        let cloned = conns.clone();
+        let task = tokio::spawn(async move {
+            dispatch(
+                &cloned,
+                "m-1",
+                ServerToAgent::RunStatus {
+                    cmd_id: "c-cancel".into(),
+                    kind: "host".into(),
+                    arg: None,
+                },
+                Duration::from_secs(30),
+            )
+            .await
+        });
+        tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(conns.pending_len(), 1);
+        task.abort();
+        let _ = task.await;
+        assert_eq!(conns.pending_len(), 0);
     }
 }

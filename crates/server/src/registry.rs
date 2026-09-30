@@ -20,6 +20,20 @@ impl Registry {
     pub async fn mark_offline(&self, id: &str) {
         self.online.write().await.remove(id);
     }
+    /// Remove only if no newer heartbeat has arrived since the sweep snapshot.
+    pub async fn mark_offline_if_older(
+        &self,
+        id: &str,
+        cutoff: chrono::DateTime<chrono::Utc>,
+    ) -> bool {
+        let mut online = self.online.write().await;
+        if online.get(id).is_some_and(|seen| *seen < cutoff) {
+            online.remove(id);
+            true
+        } else {
+            false
+        }
+    }
     pub async fn is_online(&self, id: &str) -> bool {
         self.online.read().await.contains_key(id)
     }
@@ -52,5 +66,16 @@ mod tests {
         assert!(reg.is_online("m-1").await);
         reg.mark_offline("m-1").await;
         assert!(!reg.is_online("m-1").await);
+    }
+
+    #[tokio::test]
+    async fn sweep_does_not_remove_a_new_heartbeat() {
+        let reg = Registry::new();
+        let cutoff = chrono::Utc::now() - chrono::Duration::seconds(45);
+        reg.mark_online_at("m-1", cutoff - chrono::Duration::seconds(1))
+            .await;
+        reg.mark_online("m-1").await;
+        assert!(!reg.mark_offline_if_older("m-1", cutoff).await);
+        assert!(reg.is_online("m-1").await);
     }
 }

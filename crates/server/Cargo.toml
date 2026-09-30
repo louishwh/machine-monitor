@@ -28,7 +28,7 @@ depends = "$auto"
 extended-description = "Central server for FleetWatch: terminates agent WebSocket connections over TLS, stores machine registry and status snapshots in SQLite, and exposes the signed control plane used by the console, fwctl and ops-agent."
 assets = [
     ["target/release/fleetwatch-server", "usr/bin/", "755"],
-    ["../../packaging/deb/server.toml.example", "etc/fleetwatch/server.toml", "644"],
+    ["../../packaging/deb/server.toml.example", "etc/fleetwatch/server.toml", "640"],
     ["../../packaging/deb/fleetwatch-server.service", "lib/systemd/system/", "644"],
 ]
 conf-files = ["/etc/fleetwatch/server.toml"]
@@ -57,7 +57,6 @@ toml = "0.8"
 uuid = { version = "1", features = ["v4"] }
 rcgen = { version = "0.13", features = ["pem"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-rustls-pemfile = "2"
 tokio-rustls = "0.26"
 hyper = { version = "1", features = ["http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "server-auto"] }

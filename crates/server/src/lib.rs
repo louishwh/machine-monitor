@@ -70,6 +70,29 @@ pub fn build_router(state: AppState) -> Router {
         .merge(protected)
 }
 
+/// Load the paired public key from SQLite, or persist an explicitly
+/// pre-provisioned key from server.toml on first boot.
+async fn load_console_pubkey(
+    pool: &SqlitePool,
+    cfg: &config::ServerConfig,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    if let Some(b64) = store::get_console_pubkey(pool).await? {
+        use base64::{engine::general_purpose::STANDARD as B64, Engine};
+        let bytes = B64.decode(b64)?;
+        anyhow::ensure!(
+            bytes.len() == 32,
+            "stored console public key must be 32 bytes"
+        );
+        return Ok(Some(bytes));
+    }
+    if cfg.console_public_key_b64.trim().is_empty() {
+        return Ok(None);
+    }
+    let bytes = cfg.console_public_key()?;
+    store::set_console_pubkey(pool, cfg.console_public_key_b64.trim()).await?;
+    Ok(Some(bytes))
+}
+
 pub async fn run() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     // Pin the rustls crypto provider so there's no ambiguity if more than one
@@ -82,13 +105,7 @@ pub async fn run() -> anyhow::Result<()> {
 
     let pool = db::init_pool(&cfg.db_path).await?;
 
-    // Load console public key from DB (None if not yet paired).
-    let pubkey_bytes = if let Some(b64) = store::get_console_pubkey(&pool).await? {
-        use base64::{engine::general_purpose::STANDARD as B64, Engine};
-        Some(B64.decode(b64)?)
-    } else {
-        None
-    };
+    let pubkey_bytes = load_console_pubkey(&pool, &cfg).await?;
     // Startup guard: if the server is NOT yet paired, refuse to boot with a
     // weak/default pairing token — otherwise an attacker on the (publicly
     // reachable) /api/pair endpoint could pair their own key and take over the
@@ -216,5 +233,47 @@ pub mod test_support {
             axum::serve(listener, app).await.unwrap();
         });
         addr
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::{engine::general_purpose::STANDARD as B64, Engine};
+
+    fn config_with_key(key: String) -> config::ServerConfig {
+        config::ServerConfig {
+            bind: "127.0.0.1:0".into(),
+            console_public_key_b64: key,
+            db_path: ":memory:".into(),
+            pairing_token: "test-pairing-token".into(),
+            tls_cert_path: "cert.pem".into(),
+            tls_key_path: "key.pem".into(),
+            tls_san: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn preprovisioned_key_is_persisted_on_first_boot() {
+        let pool = db::init_pool_in_memory().await.unwrap();
+        let cfg = config_with_key(B64.encode([7u8; 32]));
+        assert_eq!(
+            load_console_pubkey(&pool, &cfg).await.unwrap(),
+            Some(vec![7u8; 32])
+        );
+        assert!(store::is_paired(&pool).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn paired_database_key_takes_precedence_over_config() {
+        let pool = db::init_pool_in_memory().await.unwrap();
+        store::set_console_pubkey(&pool, &B64.encode([8u8; 32]))
+            .await
+            .unwrap();
+        let cfg = config_with_key(B64.encode([7u8; 32]));
+        assert_eq!(
+            load_console_pubkey(&pool, &cfg).await.unwrap(),
+            Some(vec![8u8; 32])
+        );
     }
 }

@@ -32,11 +32,7 @@ async fn spawn_tls_server(router: axum::Router, cert_path: &str, key_path: &str)
             tokio::spawn(async move {
                 if let Ok(tls_stream) = acceptor.accept(tcp_stream).await {
                     let io = TokioIo::new(tls_stream);
-                    let tower_svc = router
-                        .into_make_service()
-                        .call(peer_addr)
-                        .await
-                        .unwrap();
+                    let tower_svc = router.into_make_service().call(peer_addr).await.unwrap();
                     let hyper_svc = TowerToHyperService::new(tower_svc);
                     let _ = AutoBuilder::new(TokioExecutor::new())
                         .serve_connection_with_upgrades(io, hyper_svc)
@@ -65,15 +61,13 @@ async fn tls_health_endpoint_works() {
     let key_path = dir.path().join("key.pem");
 
     // Generate cert with localhost + 127.0.0.1 SANs (defaults).
-    fleetwatch_server::tls::ensure_cert(&cert_path, &key_path, &[])
-        .expect("ensure_cert failed");
+    fleetwatch_server::tls::ensure_cert(&cert_path, &key_path, &[]).expect("ensure_cert failed");
 
     let cert_pem_str = fleetwatch_server::tls::cert_pem(&cert_path).unwrap();
     let cert_pem_bytes = cert_pem_str.as_bytes();
 
     // Build a minimal router with just /health.
-    let router = axum::Router::new()
-        .route("/health", axum::routing::get(|| async { "ok" }));
+    let router = axum::Router::new().route("/health", axum::routing::get(|| async { "ok" }));
 
     let addr = spawn_tls_server(
         router,
@@ -83,8 +77,8 @@ async fn tls_health_endpoint_works() {
     .await;
 
     // Build a reqwest client that trusts ONLY our self-signed cert.
-    let root_cert = reqwest::Certificate::from_pem(cert_pem_bytes)
-        .expect("parse cert PEM for reqwest");
+    let root_cert =
+        reqwest::Certificate::from_pem(cert_pem_bytes).expect("parse cert PEM for reqwest");
     let client = reqwest::Client::builder()
         .add_root_certificate(root_cert)
         .build()
@@ -106,11 +100,9 @@ async fn tls_rejects_untrusted_client() {
     let cert_path = dir.path().join("cert.pem");
     let key_path = dir.path().join("key.pem");
 
-    fleetwatch_server::tls::ensure_cert(&cert_path, &key_path, &[])
-        .expect("ensure_cert failed");
+    fleetwatch_server::tls::ensure_cert(&cert_path, &key_path, &[]).expect("ensure_cert failed");
 
-    let router = axum::Router::new()
-        .route("/health", axum::routing::get(|| async { "ok" }));
+    let router = axum::Router::new().route("/health", axum::routing::get(|| async { "ok" }));
 
     let addr = spawn_tls_server(
         router,

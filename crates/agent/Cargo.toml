@@ -20,7 +20,7 @@ depends = "$auto"
 extended-description = "Lightweight agent that connects out to the FleetWatch central server over wss, reports machine status, and runs operator-authorized commands."
 assets = [
     ["target/release/fleetwatch-agent", "usr/bin/", "755"],
-    ["../../packaging/deb/agent.toml.example", "etc/fleetwatch/agent.toml", "644"],
+    ["../../packaging/deb/agent.toml.example", "etc/fleetwatch/agent.toml", "600"],
     ["../../packaging/deb/fleetwatch-agent.service", "lib/systemd/system/", "644"],
 ]
 conf-files = ["/etc/fleetwatch/agent.toml"]
@@ -37,12 +37,16 @@ tokio-tungstenite = { version = "0.24", features = ["connect", "rustls-tls-nativ
 futures-util = "0.3"
 toml = "0.8"
 clap = { version = "4", features = ["derive"] }
+rpassword = "7.5"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 sysinfo = "0.32"
 rustls = { version = "0.23", features = ["ring"] }
-rustls-pemfile = "2"
 tokio-rustls = "0.26"
 
 [dev-dependencies]
 rcgen = "0.13"
+tempfile = "3"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

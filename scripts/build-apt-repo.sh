@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build a static APT repository layout from a set of .deb files (the layout
-# served at https://louishwh.github.io/machine-monitor/ from the gh-pages
-# branch, built by the release workflow).
+# served at https://blog.louishwh.tech/machine-monitor/ from this public
+# repository's gh-pages branch, built by the release workflow).
 #
 #   ./scripts/build-apt-repo.sh <out-dir> <pkg.deb> [more.deb ...]
 #
@@ -44,7 +44,7 @@ for arch in $ARCHS; do
     # Declared arches always get an index, even if no debs of that arch were
     # provided this run — an empty Packages keeps apt aligned with the
     # architectures advertised in the Release file.
-    (cd "$OUT" && apt-ftparchive packages "pool/main/binary-$arch" > "$dir/Packages")
+    (cd "$OUT" && apt-ftparchive packages "pool/main/binary-$arch" > "dists/$CODENAME/main/binary-$arch/Packages")
     gzip -9n -c "$dir/Packages" > "$dir/Packages.gz"
 done
 

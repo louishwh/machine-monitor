@@ -20,6 +20,32 @@ import TerminalModal from "../components/TerminalModal";
 
 // ── IssueMachineModal ─────────────────────────────────────────────────────────
 
+function agentWebSocketUrl(serverUrl: string): string {
+  try {
+    const url = new URL(serverUrl);
+    if (url.protocol === "https:" || url.protocol === "wss:") {
+      url.protocol = "wss:";
+    } else if (url.protocol === "http:" || url.protocol === "ws:") {
+      url.protocol = "ws:";
+    } else {
+      throw new Error("unsupported server URL");
+    }
+    url.username = "";
+    url.password = "";
+    const basePath = url.pathname.replace(/\/$/, "");
+    url.pathname = basePath.endsWith("/agent") ? basePath : `${basePath}/agent`;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "wss://YOUR_SERVER/agent";
+  }
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function IssueMachineModal({ onClose, serverUrl }: { onClose: () => void; serverUrl: string }) {
   const toast = useToast();
   const [name, setName] = useState("");
@@ -53,7 +79,7 @@ function IssueMachineModal({ onClose, serverUrl }: { onClose: () => void; server
   }
 
   const enrollCmd = issued
-    ? `fleetwatch-agent enroll --server ${serverUrl || "<server_url>"} --identity ${issued.token}`
+    ? `sudo fleetwatch-agent enroll --server ${shellQuote(agentWebSocketUrl(serverUrl))} --identity-prompt`
     : "";
 
   function copyCmd() {
@@ -118,7 +144,7 @@ function IssueMachineModal({ onClose, serverUrl }: { onClose: () => void; server
           </div>
 
           <p className="text-xs text-slate-500">
-            将此命令在目标机器上执行。Agent 注册后将通过此令牌向服务端上线，公钥由管理端的主密钥签名。
+            在目标机器上执行命令，再将上方令牌粘贴到隐藏输入提示中。命令和 Shell 历史不会包含令牌。
           </p>
 
           <button className="btn-ghost w-full" onClick={onClose}>

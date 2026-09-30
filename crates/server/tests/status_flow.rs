@@ -8,22 +8,25 @@
 ///   4. Meanwhile, call `GET /api/machines/:id/status?kind=host` from an HTTP
 ///      client (signed with the console key) and assert the response JSON
 ///      contains `hostname == "web-01"`.
-
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
-use fw_proto::token::{sign_identity, IdentityPayload};
 use futures_util::{SinkExt, StreamExt};
+use fw_proto::token::{sign_identity, IdentityPayload};
 use tokio_tungstenite::tungstenite::Message;
 
 const MACHINE_ID: &str = "m-status-1";
 
 /// Build a signed GET request for control-plane endpoints.
-/// The path must be the exact path the server sees (no query string).
+/// The path and query must match the request target the server sees.
 fn signed_get(sk: &SigningKey, addr: &str, path: &str, query: &str) -> reqwest::RequestBuilder {
     let ts = Utc::now().to_rfc3339();
-    // Sign path without query string — server verifies against uri.path()
-    let sig = fw_proto::auth::sign_request(sk, "GET", path, &ts, b"");
+    let request_target = if query.is_empty() {
+        path.to_string()
+    } else {
+        format!("{path}?{query}")
+    };
+    let sig = fw_proto::auth::sign_request(sk, "GET", &request_target, &ts, b"");
     let url = if query.is_empty() {
         format!("http://{addr}{path}")
     } else {
@@ -132,6 +135,21 @@ async fn status_unknown_kind_returns_400() {
         .unwrap()
         .status();
     assert_eq!(status.as_u16(), 400, "expected 400 for unknown kind");
+}
+
+#[tokio::test]
+async fn service_status_without_name_returns_400() {
+    let sk = SigningKey::from_bytes(&[17u8; 32]);
+    let addr = fleetwatch_server::test_support::spawn_test_server(
+        B64.encode(sk.verifying_key().as_bytes()),
+    )
+    .await;
+    let status = signed_get(&sk, &addr, "/api/machines/anything/status", "kind=service")
+        .send()
+        .await
+        .unwrap()
+        .status();
+    assert_eq!(status.as_u16(), 400);
 }
 
 #[tokio::test]

@@ -13,7 +13,27 @@ if [ "$1" = "configure" ]; then
             --shell /usr/sbin/nologin fleetwatch
     fi
 
-    install -d -o fleetwatch -g fleetwatch /etc/fleetwatch/tls
+    install -d -m 0750 -o fleetwatch -g fleetwatch /etc/fleetwatch/tls
+    if [ -f /etc/fleetwatch/server.toml ]; then
+        chown root:fleetwatch /etc/fleetwatch/server.toml
+        chmod 0640 /etc/fleetwatch/server.toml
+    fi
+    if [ -f /etc/fleetwatch/tls/key.pem ]; then
+        chown fleetwatch:fleetwatch /etc/fleetwatch/tls/key.pem
+        chmod 0600 /etc/fleetwatch/tls/key.pem
+    fi
+    if [ -d /var/lib/fleetwatch ]; then
+        chown fleetwatch:fleetwatch /var/lib/fleetwatch
+        chmod 0700 /var/lib/fleetwatch
+    fi
+    for db_file in /var/lib/fleetwatch/fleetwatch.db \
+                   /var/lib/fleetwatch/fleetwatch.db-wal \
+                   /var/lib/fleetwatch/fleetwatch.db-shm; do
+        if [ -f "$db_file" ]; then
+            chown fleetwatch:fleetwatch "$db_file"
+            chmod 0600 "$db_file"
+        fi
+    done
 
     if command -v systemctl >/dev/null 2>&1; then
         systemctl daemon-reload || true

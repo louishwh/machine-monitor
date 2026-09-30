@@ -19,14 +19,15 @@ revoked individually.
 
 ## Architecture
 
+[查看系统架构网页](https://blog.louishwh.tech/machine-monitor/architecture.html) · [SVG 架构图](docs/architecture.svg)
+
 ![FleetWatch architecture](docs/architecture.png)
-*(editable source: [docs/architecture.svg](docs/architecture.svg))*
 
 - **`crates/proto`** — shared protocol: WS messages, ed25519 identity tokens, request signing.
 - **`crates/server`** — central server: `/agent` WS hub, `/api/*` signed control plane, SQLite registry/audit, status snapshots, offline scan.
 - **`crates/agent`** — single-binary agent: reverse connect, heartbeat with status summary, on-demand collection (sysinfo), controlled shell (off by default, 30s timeout).
 - **`crates/fwctl`** — headless console CLI: master key, pairing, identity issuance, list/status/prune.
-- **`crates/ops-agent`** — read-only fleet health observer + alerting (no shell, zero blast radius).
+- **`crates/ops-agent`** — GET-only fleet health observer + alerting; currently uses a copy of the full-control master key, so run it only on a trusted host.
 - **`console/`** — Tauri desktop console: master key (file / macOS keychain), pairing, identity issuance, machine list, per-machine terminal, audit, revoke.
 
 ## Supported platforms
@@ -40,20 +41,22 @@ revoked individually.
 
 ## Install
 
-Prebuilt packages are published automatically on every `v*` tag: `.deb`
-packages for Ubuntu/Debian via the project APT repository, and the macOS
-console app via Homebrew.
+After the one-time publishing setup and first `v*` release, prebuilt `.deb`
+packages are published through the signed project APT repository. A new Ubuntu
+machine needs the repository configured once; later installs and upgrades use
+`apt-get` directly.
 
 **Ubuntu — agent (each monitored machine):**
 
 ```bash
-sudo install -d /etc/apt/keyrings
-curl -fsSL https://louishwh.github.io/machine-monitor/gpg.key \
-  | sudo gpg --dearmor -o /etc/apt/keyrings/fleetwatch.gpg
-echo "deb [signed-by=/etc/apt/keyrings/fleetwatch.gpg] https://louishwh.github.io/machine-monitor stable main" \
-  | sudo tee /etc/apt/sources.list.d/fleetwatch.list
-sudo apt update && sudo apt install fleetwatch-agent
+curl -fsSLO https://blog.louishwh.tech/machine-monitor/install.sh
+sudo sh install.sh agent
 ```
+
+The script installs the repository public key under `/etc/apt/keyrings`, adds
+the signed APT source, runs `apt-get update`, and installs `fleetwatch-agent`.
+To configure only the source, run `sudo sh install.sh repo`; then
+`sudo apt-get install fleetwatch-agent` works normally.
 
 The service is enabled but not started on install — set `server_url` +
 `identity_token` in `/etc/fleetwatch/agent.toml` (from the console's
@@ -63,8 +66,8 @@ The service is enabled but not started on install — set `server_url` +
 **Ubuntu — server (one central host):**
 
 ```bash
-# same keyring + sources.list.d steps as above, then:
-sudo apt update && sudo apt install fleetwatch-server
+curl -fsSLO https://blog.louishwh.tech/machine-monitor/install.sh
+sudo sh install.sh server
 ```
 
 Edit `/etc/fleetwatch/server.toml` (set a strong `pairing_token`), then
@@ -96,8 +99,9 @@ pairing token, and start:
 
 ```bash
 cp server.toml.example server.toml
-# edit server.toml — at minimum set a strong pairing_token:
-#   pairing_token = "$(openssl rand -hex 16)"
+chmod 600 server.toml
+# Generate a token with `openssl rand -hex 16`, then paste its output into
+# the pairing_token value in server.toml.
 # (the server refuses to boot unpaired with a weak/default token)
 ./target/release/fleetwatch-server      # reads ./server.toml, or set FW_SERVER_CONFIG
 ```
@@ -108,7 +112,7 @@ cp server.toml.example server.toml
 fwctl keygen                                    # create the master key (~/.fleetwatch/master.key)
 fwctl pubkey                                     # inspect the public key
 fwctl pair --server https://your-server:8443 \
-           --pairing-token <token-from-server.toml> \
+           --pairing-token-prompt \
            --server-ca path/to/cert.pem          # CA needed for the self-signed cert
 ```
 
@@ -127,7 +131,7 @@ fwctl issue --name web-1 --server wss://your-server:8443/agent
 ```bash
 sudo fleetwatch-agent enroll \
     --server wss://your-server:8443/agent \
-    --identity '<token-from-step-3>'
+    --identity-prompt   # paste the token from step 3 at the hidden prompt
 sudo systemctl start fleetwatch-agent     # Linux (.deb); macOS uses launchd
 ```
 

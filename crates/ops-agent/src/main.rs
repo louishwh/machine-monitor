@@ -2,7 +2,8 @@
 //!
 //! Polls the signed control plane, evaluates thresholds, and emits alerts on
 //! state changes (new breach / resolved) plus a periodic health report.
-//! Strictly read-only: no shell, no writes — zero blast radius.
+//! The client sends only GET requests, but its copied master key has full
+//! server-side authority. Run it only on a trusted host.
 
 mod client;
 mod health;

@@ -1,9 +1,9 @@
 # Tag-driven release. On `v*` tags this builds the Linux .debs (amd64+arm64,
 # static musl), the macOS universal console app, publishes a GitHub Release,
-# regenerates the signed APT repo on the gh-pages branch, and updates the
-# Homebrew cask in louishwh/homebrew-tap.
+# regenerates the signed APT repo on this repository's gh-pages branch,
+# explicitly deploys it to GitHub Pages, and updates the cask.
 #
-# Required secrets (see RELEASING.md → "One-time setup" for how to create them):
+# Required secrets (run scripts/setup-apt-publishing.sh; see RELEASING.md):
 #   GPG_PRIVATE_KEY      — release signing key; the apt-repo job FAILS without it
 #   HOMEBREW_TAP_TOKEN   — PAT with contents:write on louishwh/homebrew-tap;
 #                          the tap job warns and skips without it
@@ -15,8 +15,13 @@ on:
   push:
     tags: ["v*"]
 
+# APT metadata is cumulative, so two tag builds must not publish it at once.
+concurrency:
+  group: fleetwatch-release
+  cancel-in-progress: false
+
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -39,6 +44,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
 
       - name: Check tag matches crate version
         run: |
@@ -93,7 +102,8 @@ jobs:
           FW_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
           if [ -n "$FW_APPLE_API_KEY" ]; then
-            mkdir -p "$HOME/.fleetwatch-ci"
+            install -d -m 0700 "$HOME/.fleetwatch-ci"
+            umask 077
             printf '%s\n' "$FW_APPLE_API_KEY" > "$HOME/.fleetwatch-ci/AuthKey.p8"
             echo "APPLE_API_KEY_PATH=$HOME/.fleetwatch-ci/AuthKey.p8" >> "$GITHUB_ENV"
           else
@@ -116,6 +126,8 @@ jobs:
   github-release:
     needs: [linux-deb, macos-app]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -133,8 +145,13 @@ jobs:
   apt-repo:
     needs: [linux-deb]
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install repository tooling
+        run: sudo apt-get update && sudo apt-get install -y apt-utils
 
       - uses: actions/download-artifact@v4
         with:
@@ -145,32 +162,53 @@ jobs:
       - name: Fail early if signing key is missing
         env:
           FW_GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-        run: '[ -n "$FW_GPG_PRIVATE_KEY" ] || { echo "::error::GPG_PRIVATE_KEY secret is not set — the apt repo must be signed. See RELEASING.md → One-time setup."; exit 1; }'
+        run: |
+          [ -n "$FW_GPG_PRIVATE_KEY" ] || { echo "::error::GPG_PRIVATE_KEY secret is not set — the apt repo must be signed."; exit 1; }
 
       - name: Import GPG signing key
         env:
           FW_GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
         run: |
-          echo "$FW_GPG_PRIVATE_KEY" | gpg --batch --import
+          printf '%s\n' "$FW_GPG_PRIVATE_KEY" | gpg --batch --import
           keyid="$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/{print $5; exit}')"
           echo "Using signing key $keyid"
           echo "FW_GPG_KEY_ID=$keyid" >> "$GITHUB_ENV"
 
       - name: Fetch existing gh-pages repo
         run: |
-          url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          if ! git clone --depth 1 --branch gh-pages "$url" repo; then
-            echo "no gh-pages branch yet — starting a fresh one"
-            mkdir repo && cd repo && git init -b gh-pages
-            git remote add origin "$url"
-          fi
+          gh auth setup-git --hostname github.com
+          url="https://github.com/${GITHUB_REPOSITORY}.git"
+          set +e
+          git ls-remote --exit-code --heads "$url" gh-pages >/dev/null
+          status=$?
+          set -e
+          case "$status" in
+            0) git clone --depth 1 --branch gh-pages "$url" repo ;;
+            2) mkdir repo && git -C repo init -b gh-pages && git -C repo remote add origin "$url" ;;
+            *) echo "Cannot read gh-pages branch (git exit $status)" >&2; exit "$status" ;;
+          esac
         env:
           GH_TOKEN: ${{ github.token }}
 
       - name: Rebuild APT repo
-        run: ./scripts/build-apt-repo.sh repo artifacts/*.deb
+        run: |
+          ./scripts/build-apt-repo.sh repo artifacts/*.deb
+          cp scripts/install-ubuntu.sh repo/install.sh
+          cp packaging/apt/index.html repo/index.html
+          cp docs/architecture.html repo/architecture.html
+          cp docs/architecture.svg repo/architecture.svg
+          touch repo/.nojekyll
+
+      - name: Verify signed APT installation on Ubuntu
+        run: |
+          docker run --rm --platform linux/amd64 \
+            --mount type=bind,src="$PWD/repo",dst=/apt-repo,readonly \
+            --mount type=bind,src="$PWD/scripts/smoke-apt-install.sh",dst=/smoke.sh,readonly \
+            ubuntu:24.04 sh /smoke.sh
 
       - name: Push gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           cd repo
           git config user.name "fleetwatch-release-bot"
@@ -178,6 +216,30 @@ jobs:
           git add -A
           git commit -m "apt repo: $GITHUB_REF_NAME" || echo "no changes to commit"
           git push origin gh-pages
+
+      - name: Remove Git metadata from Pages files
+        run: rm -rf repo/.git
+
+      - name: Upload signed APT repository for Pages
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: repo
+
+  apt-pages:
+    needs: [apt-repo]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Deploy signed APT repository
+        id: deployment
+        uses: actions/deploy-pages@v4
 
   homebrew-tap:
     needs: [github-release]

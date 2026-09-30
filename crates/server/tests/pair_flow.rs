@@ -72,5 +72,28 @@ async fn pair_bad_pubkey_400() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status().as_u16(), 400, "expected 400 for bad pubkey length");
+    assert_eq!(
+        resp.status().as_u16(),
+        400,
+        "expected 400 for bad pubkey length"
+    );
+}
+
+#[tokio::test]
+async fn simultaneous_pair_requests_have_one_winner() {
+    let addr = fleetwatch_server::test_support::spawn_unpaired(TOKEN.into()).await;
+    let client = reqwest::Client::new();
+    let url = format!("http://{addr}/api/pair");
+    let first = client.post(&url).json(&serde_json::json!({
+        "pairing_token": TOKEN,
+        "console_public_key_b64": B64.encode([7u8; 32]),
+    }));
+    let second = client.post(&url).json(&serde_json::json!({
+        "pairing_token": TOKEN,
+        "console_public_key_b64": B64.encode([8u8; 32]),
+    }));
+    let (a, b) = tokio::join!(first.send(), second.send());
+    let mut statuses = [a.unwrap().status().as_u16(), b.unwrap().status().as_u16()];
+    statuses.sort();
+    assert_eq!(statuses, [200, 409]);
 }

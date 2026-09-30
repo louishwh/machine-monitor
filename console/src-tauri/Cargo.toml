@@ -6,7 +6,7 @@ version = "0.1.0"
 description = "FleetWatch PC 管理端"
 authors = ["louis"]
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.86"
 
 [lib]
 name = "fleetwatch_console_lib"

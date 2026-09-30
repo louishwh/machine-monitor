@@ -58,7 +58,7 @@
   <text x="1080" y="174" font-size="16" font-weight="700" fill="#9a3412">ops-agent — read-only observer</text>
   <text x="1080" y="200" font-size="13" fill="#334155">polls GET /api/machines (signed) every 30s</text>
   <text x="1080" y="220" font-size="13" fill="#334155">threshold checks → alerts (exit code / log)</text>
-  <text x="1080" y="240" font-size="13" fill="#334155">no shell, no control-plane writes — zero blast radius</text>
+  <text x="1080" y="240" font-size="13" fill="#334155">GET-only client; copied master key has full privileges</text>
   <text x="1080" y="260" font-size="13" fill="#334155">runs on ops infra, holds a copy of the master key</text>
   <text x="1080" y="280" font-size="13" fill="#334155">CLI-only config: --server --key --interval --once</text>
   <text x="1080" y="300" font-size="13" fill="#334155">same signed-request scheme as fwctl (x-fw-signature)</text>

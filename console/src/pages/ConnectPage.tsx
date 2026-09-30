@@ -180,7 +180,7 @@ export default function ConnectPage({ activeServerId }: Props) {
           <div className="flex gap-2">
             <input
               className="input flex-1 font-mono"
-              type="text"
+              type="password"
               placeholder="server.toml 中的 pairing_token"
               value={pairingToken}
               onChange={(e) => setPairingToken(e.target.value)}

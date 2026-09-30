@@ -4,6 +4,7 @@ mod config;
 
 use anyhow::Context as _;
 use clap::{Parser, Subcommand};
+use std::io::Write as _;
 
 #[derive(Parser)]
 #[command(name = "fleetwatch-agent")]
@@ -23,8 +24,12 @@ enum Cmd {
     Enroll {
         #[arg(long)]
         server: String,
+        /// Legacy non-interactive path; visible in process arguments and shell history.
         #[arg(long)]
-        identity: String,
+        identity: Option<String>,
+        /// Read the identity token from a hidden terminal prompt.
+        #[arg(long, conflicts_with = "identity")]
+        identity_prompt: bool,
         #[arg(long, default_value = "/etc/fleetwatch/agent.toml")]
         config: String,
         /// Path to server CA PEM file (for wss:// with self-signed cert).
@@ -45,9 +50,20 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Enroll {
             server,
             identity,
+            identity_prompt,
             config,
             server_ca,
         } => {
+            let identity = if identity_prompt {
+                rpassword::prompt_password("Machine identity token: ")?
+                    .trim()
+                    .to_string()
+            } else {
+                identity.ok_or_else(|| {
+                    anyhow::anyhow!("provide --identity-prompt (recommended) or --identity")
+                })?
+            };
+            anyhow::ensure!(!identity.is_empty(), "identity token must not be empty");
             let mut body = format!("server_url = \"{server}\"\nidentity_token = \"{identity}\"\n");
             if let Some(ca_path) = server_ca {
                 let pem = std::fs::read_to_string(&ca_path)
@@ -56,10 +72,28 @@ async fn main() -> anyhow::Result<()> {
                 // PEM contains only base64, newlines, and "-----…-----" headers — no '''.
                 body.push_str(&format!("server_ca_pem = '''\n{pem}'''\n"));
             }
-            if let Some(p) = std::path::Path::new(&config).parent() {
-                std::fs::create_dir_all(p).ok();
+            let path = std::path::Path::new(&config);
+            if let Some(p) = path.parent() {
+                if !p.as_os_str().is_empty() {
+                    std::fs::create_dir_all(p)?;
+                }
             }
-            std::fs::write(&config, &body)?;
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create(true).truncate(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+                options.mode(0o600);
+                let mut file = options.open(path)?;
+                // Existing enrollment files may have been created with mode 0644.
+                // Tighten the opened file before writing the new identity token.
+                file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+                file.write_all(body.as_bytes())?;
+            }
+            #[cfg(not(unix))]
+            {
+                options.open(path)?.write_all(body.as_bytes())?;
+            }
             println!("Written to {config}");
         }
     }

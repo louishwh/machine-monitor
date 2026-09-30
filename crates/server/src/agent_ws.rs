@@ -65,10 +65,21 @@ async fn run(sock: WebSocket, st: AppState) {
                         return;
                     }
                 };
-                if store::is_revoked(&st.pool, &payload.machine_id)
-                    .await
-                    .unwrap_or(false)
-                {
+                let revoked = match store::is_revoked(&st.pool, &payload.machine_id).await {
+                    Ok(revoked) => revoked,
+                    Err(e) => {
+                        tracing::error!(error=%e, "agent revocation check failed");
+                        let _ = send_sink(
+                            &mut sink,
+                            &ServerToAgent::Reject {
+                                reason: "身份检查失败".into(),
+                            },
+                        )
+                        .await;
+                        return;
+                    }
+                };
+                if revoked {
                     let _ = send_sink(
                         &mut sink,
                         &ServerToAgent::Reject {
@@ -78,7 +89,7 @@ async fn run(sock: WebSocket, st: AppState) {
                     .await;
                     return;
                 }
-                let _ = store::upsert_machine(
+                if let Err(e) = store::upsert_machine(
                     &st.pool,
                     &payload.machine_id,
                     &payload.name,
@@ -86,9 +97,24 @@ async fn run(sock: WebSocket, st: AppState) {
                     &os,
                     &agent_version,
                 )
-                .await;
-                st.registry.mark_online(&payload.machine_id).await;
-                let _ = send_sink(&mut sink, &ServerToAgent::HelloAck { ok: true }).await;
+                .await
+                {
+                    tracing::error!(error=%e, "agent registration failed");
+                    let _ = send_sink(
+                        &mut sink,
+                        &ServerToAgent::Reject {
+                            reason: "注册失败".into(),
+                        },
+                    )
+                    .await;
+                    return;
+                }
+                if send_sink(&mut sink, &ServerToAgent::HelloAck { ok: true })
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
                 break payload.machine_id;
             }
             // If we see non-Hello before Hello, ignore and keep waiting
@@ -97,13 +123,14 @@ async fn run(sock: WebSocket, st: AppState) {
     };
 
     // Register this connection in the Conns table.
-    // `kill` is notified by `conns.kick(&id)` to force-disconnect this agent.
-    let (mut rx, kill, gen) = st.conns.register(&id).await;
+    // `kill` receives a reason on revocation or replacement by a new session.
+    let (mut rx, mut kill, gen) = st.conns.register(&id).await;
+    st.registry.mark_online(&id).await;
 
     // --- Main loop: select over three arms ---
     // (a) inbound from agent socket
     // (b) outbound from server → agent channel
-    // (c) kill notify (forced revocation disconnect)
+    // (c) forced disconnect reason
     loop {
         tokio::select! {
             // (a) Inbound: messages from agent
@@ -114,6 +141,9 @@ async fn run(sock: WebSocket, st: AppState) {
                         let Ok(parsed) = serde_json::from_str::<AgentToServer>(&txt) else { continue };
                         match parsed {
                             AgentToServer::Heartbeat { summary } => {
+                                if !st.conns.is_current(&id, gen).await {
+                                    break;
+                                }
                                 st.registry.mark_online(&id).await;
                                 let _ = store::touch_last_seen(&st.pool, &id).await;
                                 if let Some(s) = summary {
@@ -145,13 +175,24 @@ async fn run(sock: WebSocket, st: AppState) {
                             break;
                         }
                     }
-                    None => break, // channel dropped (server shutting down)
+                    None => {
+                        let reason = *kill.borrow_and_update();
+                        if let Some(reason) = reason {
+                            let _ = send_sink(&mut sink, &ServerToAgent::Reject { reason: reason.into() }).await;
+                        }
+                        break;
+                    }
                 }
             }
 
-            // (c) Kill: forced disconnect triggered by conns.kick() (e.g. live revoke)
-            _ = kill.notified() => {
-                let _ = send_sink(&mut sink, &ServerToAgent::Reject { reason: "已吊销".into() }).await;
+            // (c) Forced disconnect (revoke or replacement)
+            changed = kill.changed() => {
+                let reason = if changed.is_ok() {
+                    (*kill.borrow()).unwrap_or("连接已关闭")
+                } else {
+                    "连接已关闭"
+                };
+                let _ = send_sink(&mut sink, &ServerToAgent::Reject { reason: reason.into() }).await;
                 break;
             }
         }
@@ -159,8 +200,9 @@ async fn run(sock: WebSocket, st: AppState) {
 
     // Cleanup on disconnect — use generation guard so a stale old-task cleanup
     // cannot evict a newer connection that registered with a different gen.
-    st.conns.unregister_gen(&id, gen).await;
-    st.registry.mark_offline(&id).await;
+    if st.conns.unregister_gen(&id, gen).await {
+        st.registry.mark_offline(&id).await;
+    }
 }
 
 async fn send_sink(

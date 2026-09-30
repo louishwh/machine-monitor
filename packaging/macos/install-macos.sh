@@ -1,29 +1,25 @@
 #!/usr/bin/env bash
 # Install the FleetWatch agent as a macOS LaunchDaemon (system-level, runs at boot).
 # Usage:
-#   sudo ./install-macos.sh <path-to-fleetwatch-agent-binary> <server_url> <identity_token>
+#   sudo ./install-macos.sh <path-to-fleetwatch-agent-binary> <server_url>
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "Please run with sudo (LaunchDaemon installs system-wide)." >&2
     exit 1
 fi
-if [ "$#" -ne 3 ]; then
-    echo "Usage: sudo $0 <agent-binary> <server_url> <identity_token>" >&2
+if [ "$#" -ne 2 ]; then
+    echo "Usage: sudo $0 <agent-binary> <server_url>" >&2
     exit 1
 fi
 
-BIN="$1"; SERVER_URL="$2"; TOKEN="$3"
+BIN="$1"; SERVER_URL="$2"
 PLIST_SRC="$(cd "$(dirname "$0")" && pwd)/com.fleetwatch.agent.plist"
 PLIST_DST="/Library/LaunchDaemons/com.fleetwatch.agent.plist"
 
 install -m 755 "$BIN" /usr/local/bin/fleetwatch-agent
-mkdir -p /etc/fleetwatch
-cat > /etc/fleetwatch/agent.toml <<EOF
-server_url = "${SERVER_URL}"
-identity_token = "${TOKEN}"
-EOF
-chmod 600 /etc/fleetwatch/agent.toml
+/usr/local/bin/fleetwatch-agent enroll \
+    --server "$SERVER_URL" --identity-prompt --config /etc/fleetwatch/agent.toml
 
 cp "$PLIST_SRC" "$PLIST_DST"
 chown root:wheel "$PLIST_DST"

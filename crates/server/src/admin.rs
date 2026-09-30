@@ -59,28 +59,59 @@ pub async fn post_run_shell(
         command: body.command.clone(),
     };
 
-    let result = dispatch::dispatch(&st.conns, &id, msg, Duration::from_secs(30))
-        .await
-        .map_err(|e| {
-            let msg = e.to_string();
-            if msg.contains("timed out") {
-                (StatusCode::GATEWAY_TIMEOUT, msg)
-            } else {
-                (StatusCode::BAD_GATEWAY, msg)
-            }
-        })?;
-
-    // Persist audit log entry.
+    // The agent enforces a 30-second process timeout; allow a short margin for
+    // its final CommandResult to cross the WebSocket and be audited here.
+    // Record the request before sending it. If SQLite is unavailable, do not
+    // execute an unaudited shell command.
     let entry = store::CommandLogEntry {
-        id: cmd_id,
+        id: cmd_id.clone(),
         machine_id: id.clone(),
         kind: "shell".into(),
         request: body.command.clone(),
-        exit: Some(result.exit as i64),
-        output: format!("{}{}", result.stdout, result.stderr),
+        exit: None,
+        output: String::new(),
         created_at: chrono::Utc::now().to_rfc3339(),
     };
-    let _ = store::log_command(&st.pool, &entry).await;
+    store::log_command(&st.pool, &entry).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("audit failed: {e}"),
+        )
+    })?;
+
+    let result = match dispatch::dispatch(&st.conns, &id, msg, Duration::from_secs(35)).await {
+        Ok(result) => result,
+        Err(e) => {
+            let message = e.to_string();
+            store::finish_command_log(&st.pool, &cmd_id, None, &message)
+                .await
+                .map_err(|err| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("audit update failed: {err}"),
+                    )
+                })?;
+            let status = if message.contains("timed out") {
+                StatusCode::GATEWAY_TIMEOUT
+            } else {
+                StatusCode::BAD_GATEWAY
+            };
+            return Err((status, message));
+        }
+    };
+    store::finish_command_log(
+        &st.pool,
+        &cmd_id,
+        Some(result.exit as i64),
+        &format!("{}{}", result.stdout, result.stderr),
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("audit update failed: {e}"),
+        )
+    })?;
 
     Ok(Json(json!({
         "exit": result.exit,
@@ -121,6 +152,9 @@ pub async fn get_audit(
     State(st): State<AppState>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     let limit = q.limit.unwrap_or(100);
+    if !(1..=1000).contains(&limit) {
+        return Err((StatusCode::BAD_REQUEST, "limit must be 1..=1000".into()));
+    }
     let rows = store::list_audit(&st.pool, q.machine_id.as_deref(), limit)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

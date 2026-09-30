@@ -85,7 +85,7 @@ cd src-tauri && cargo build
 在「服务端地址」栏填入服务端的 HTTP 地址，例如：
 
 ```
-http://192.168.1.10:3000
+https://server.example.com:8443
 ```
 
 点击**保存**。
@@ -102,23 +102,23 @@ http://192.168.1.10:3000
 
 切换到「机器」视图 → **签发机器** → 输入机器名称（如 `prod-server-01`）→ 点击**签发身份令牌**。
 
-界面会显示令牌和完整的注册命令，例如：
+界面会分别显示令牌和注册命令，例如：
 
 ```bash
-fleetwatch-agent enroll \
-  --server http://192.168.1.10:3000 \
-  --identity eyJ...（完整令牌）
+sudo fleetwatch-agent enroll \
+  --server wss://server.example.com:8443/agent \
+  --identity-prompt
 ```
 
-点击「复制」按钮将命令复制到剪贴板。
+复制命令到目标机器执行，再单独复制令牌并粘贴到隐藏输入提示中。
 
 ### 5. 在目标机器上运行 Agent
 
 将第 4 步复制的命令在目标机器上执行：
 
 ```bash
-fleetwatch-agent enroll --server <url> --identity <token>
-fleetwatch-agent start
+sudo fleetwatch-agent enroll --server wss://server.example.com:8443/agent --identity-prompt
+sudo systemctl start fleetwatch-agent
 ```
 
 Agent 启动后通过 WebSocket 连接服务端，服务端用管理端的公钥验证身份令牌。

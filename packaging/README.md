@@ -2,15 +2,16 @@
 
 ## 在线安装（推荐）
 
-配好 apt 源后可直接包管理器安装（README「Install」章节有完整命令）：
+在全新 Ubuntu 主机上，安装脚本会配置仓库公钥与 APT 软件源，并安装指定包：
 
 ```bash
-sudo apt update && sudo apt install fleetwatch-server   # 中心服务端
-sudo apt update && sudo apt install fleetwatch-agent    # 每台被监控机器
-brew install louishwh/tap/fleetwatch                    # macOS 桌面管理端
+curl -fsSLO https://blog.louishwh.tech/machine-monitor/install.sh
+sudo sh install.sh server  # 中心服务端，或改为 agent
 ```
 
-deb 由 tag 驱动的 release workflow 自动构建并发布到 gh-pages 上的签名 apt 源
+只配置软件源可运行 `sudo sh install.sh repo`。此后可直接使用
+`sudo apt-get install fleetwatch-agent` 或 `sudo apt-get install fleetwatch-server`。
+deb 由 tag 驱动的 release workflow 自动构建，签名后部署到 GitHub Pages
 （见 `RELEASING.md`）。下面是手动部署/本地构建的路径。
 
 ## 中心服务端（Ubuntu，单二进制 + systemd）
@@ -22,8 +23,10 @@ deb 安装时已自动创建 `fleetwatch` 系统用户、TLS 目录并 enable �
 cargo build --release -p fleetwatch-server
 sudo install -m755 target/release/fleetwatch-server /usr/bin/
 sudo useradd --system fleetwatch || true
-sudo mkdir -p /etc/fleetwatch/tls /var/lib/fleetwatch
-sudo chown -R fleetwatch /etc/fleetwatch/tls /var/lib/fleetwatch
+sudo install -d -m 0750 -o fleetwatch -g fleetwatch /etc/fleetwatch/tls
+sudo install -d -m 0700 -o fleetwatch -g fleetwatch /var/lib/fleetwatch
+sudo install -m 0640 -o root -g fleetwatch \
+    packaging/deb/server.toml.example /etc/fleetwatch/server.toml
 # 写 /etc/fleetwatch/server.toml（模板：packaging/deb/server.toml.example）：
 #   bind = "0.0.0.0:8443"          # 或 127.0.0.1:8080 由反代终止 TLS
 #   db_path = "/var/lib/fleetwatch/fleetwatch.db"
@@ -54,7 +57,7 @@ sudo apt install ./target/debian/fleetwatch-agent_0.1.0_amd64.deb
 # 安装后 service 已 enable 但未 start（需先填身份令牌）：
 sudo fleetwatch-agent enroll \
     --server wss://mon.example.com/agent \
-    --identity '<管理端签发的令牌>'
+    --identity-prompt  # 将管理端签发的令牌粘贴到隐藏输入提示中
 sudo systemctl start fleetwatch-agent
 systemctl status fleetwatch-agent
 ```
@@ -65,8 +68,8 @@ systemctl status fleetwatch-agent
 cargo build --release -p fleetwatch-agent
 sudo packaging/macos/install-macos.sh \
     target/release/fleetwatch-agent \
-    wss://mon.example.com/agent \
-    '<管理端签发的令牌>'
+    wss://mon.example.com/agent
+# 在隐藏输入提示中粘贴管理端签发的令牌
 # 已 launchctl load，开机自启；日志 /var/log/fleetwatch-agent.log
 ```
 

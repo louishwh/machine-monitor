@@ -64,7 +64,28 @@ async fn correctly_signed_request_returns_200() {
         .await
         .unwrap()
         .status();
-    assert_eq!(status.as_u16(), 200, "expected 200 for correctly signed request");
+    assert_eq!(
+        status.as_u16(),
+        200,
+        "expected 200 for correctly signed request"
+    );
+}
+
+#[tokio::test]
+async fn changed_query_string_invalidates_signature() {
+    let (sk, pubkey_b64) = make_server_and_key();
+    let addr = fleetwatch_server::test_support::spawn_test_server(pubkey_b64).await;
+    let ts = Utc::now().to_rfc3339();
+    let sig = fw_proto::auth::sign_request(&sk, "GET", "/api/machines?view=one", &ts, b"");
+    let status = reqwest::Client::new()
+        .get(format!("http://{addr}/api/machines?view=two"))
+        .header("x-fw-timestamp", ts)
+        .header("x-fw-signature", sig)
+        .send()
+        .await
+        .unwrap()
+        .status();
+    assert_eq!(status.as_u16(), 401);
 }
 
 #[tokio::test]

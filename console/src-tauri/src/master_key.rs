@@ -8,11 +8,13 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use ed25519_dalek::SigningKey;
 use keyring::Entry;
 use rand_core::{OsRng, RngCore};
+use std::sync::Mutex;
 
 use crate::error::{AppError, AppResult};
 
 const SERVICE: &str = "com.fleetwatch.console";
 const SEED_USER: &str = "master_seed";
+static GENERATION_LOCK: Mutex<()> = Mutex::new(());
 
 fn entry() -> AppResult<Entry> {
     Ok(Entry::new(SERVICE, SEED_USER)?)
@@ -26,6 +28,14 @@ pub fn has_key() -> bool {
 /// Generate a fresh random 32-byte seed and store it in the OS keychain.
 /// Returns an error if a seed already exists (caller should check `has_key` first).
 pub fn generate() -> AppResult<()> {
+    let _guard = GENERATION_LOCK
+        .lock()
+        .map_err(|_| AppError::Key("主密钥生成锁不可用".into()))?;
+    match entry()?.get_password() {
+        Ok(_) => return Err(AppError::Key("主密钥已存在，拒绝覆盖".into())),
+        Err(keyring::Error::NoEntry) => {}
+        Err(e) => return Err(AppError::Keyring(e.to_string())),
+    }
     let mut seed = [0u8; 32];
     OsRng.fill_bytes(&mut seed);
     let b64 = B64.encode(seed);

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FleetWatch Ubuntu 安装</title>
+    <style>
+      body { max-width: 760px; margin: 48px auto; padding: 0 20px; color: #1d2939; font: 16px/1.65 system-ui, sans-serif; }
+      h1 { margin-bottom: 8px; }
+      p { color: #526071; }
+      pre { overflow-x: auto; padding: 16px; border-radius: 10px; background: #f0f3f8; color: #213250; font-size: 14px; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      a { color: #315caa; }
+    </style>
+  </head>
+  <body>
+    <h1>FleetWatch Ubuntu 安装</h1>
+    <p>下载仓库配置脚本。脚本会安装此 APT 仓库的公钥、配置软件源，然后安装所选软件包。</p>
+    <h2>安装 Agent</h2>
+    <pre><code>curl -fsSLO https://blog.louishwh.tech/machine-monitor/install.sh
+sudo sh install.sh agent</code></pre>
+    <h2>安装中心服务</h2>
+    <pre><code>curl -fsSLO https://blog.louishwh.tech/machine-monitor/install.sh
+sudo sh install.sh server</code></pre>
+    <p>只配置软件源：<code>sudo sh install.sh repo</code>。配置后可直接运行 <code>sudo apt-get install fleetwatch-agent</code> 或 <code>sudo apt-get install fleetwatch-server</code>，后续升级也由 APT 管理。</p>
+    <p>Agent 安装后仍需配置管理端签发的身份令牌；中心服务安装后需设置配对码，再启动服务。仓库公钥可在 <a href="gpg.key">gpg.key</a> 查看。</p>
+    <p><a href="architecture.html">查看系统架构图</a></p>
+  </body>
+</html>

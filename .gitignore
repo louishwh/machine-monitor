@@ -18,3 +18,5 @@ server.toml
 # os
 .DS_Store
 *.local
+# local assistant session data
+.zcode/

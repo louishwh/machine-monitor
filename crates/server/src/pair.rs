@@ -66,9 +66,12 @@ pub async fn pair(
     }
 
     // Persist to DB.
-    store::set_console_pubkey(&st.pool, &body.console_public_key_b64)
+    let stored = store::set_console_pubkey_if_unpaired(&st.pool, &body.console_public_key_b64)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if !stored {
+        return Err((StatusCode::CONFLICT, "already paired".into()));
+    }
 
     // Update the in-memory shared RwLock so auth middleware picks it up immediately.
     *st.console_pubkey.write().await = Some(decoded);

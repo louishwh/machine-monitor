@@ -48,3 +48,25 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build (tsc + vite)
         run: pnpm build
+
+  apt-repo:
+    name: APT repository layout
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install repository tooling
+        run: sudo apt-get update && sudo apt-get install -y apt-utils
+      - name: Build and inspect a sample package index
+        run: |
+          mkdir -p "$RUNNER_TEMP/sample/DEBIAN"
+          cat > "$RUNNER_TEMP/sample/DEBIAN/control" <<'EOF'
+          Package: fleetwatch-agent
+          Version: 0.0.0
+          Architecture: amd64
+          Maintainer: FleetWatch
+          Description: APT repository layout check
+          EOF
+          dpkg-deb --build "$RUNNER_TEMP/sample" "$RUNNER_TEMP/fleetwatch-agent_0.0.0_amd64.deb"
+          ./scripts/build-apt-repo.sh "$RUNNER_TEMP/repo" "$RUNNER_TEMP/fleetwatch-agent_0.0.0_amd64.deb"
+          grep -q '^Package: fleetwatch-agent$' "$RUNNER_TEMP/repo/dists/stable/main/binary-amd64/Packages"
+          test -s "$RUNNER_TEMP/repo/dists/stable/Release"

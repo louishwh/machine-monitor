@@ -35,7 +35,8 @@ trap 'rm -rf "$tmp"' EXIT
 curl -fsSL "$url" -o "$tmp/app.dmg"
 sha="$(shasum -a 256 "$tmp/app.dmg" | cut -d' ' -f1)"
 
-git clone --depth 1 "https://x-access-token:${FW_TAP_TOKEN}@github.com/${TAP_REPO}.git" "$tmp/tap"
+gh auth setup-git --hostname github.com
+git clone --depth 1 "https://github.com/${TAP_REPO}.git" "$tmp/tap"
 cask="$tmp/tap/Casks/fleetwatch.rb"
 mkdir -p "$(dirname "$cask")"
 sed -e "s|@VERSION@|$VER|g" -e "s|@SHA256@|$sha|g" -e "s|@URL@|$url|g" "$TEMPLATE" > "$cask"

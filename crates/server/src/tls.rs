@@ -29,6 +29,11 @@ pub fn ensure_cert(
     let key_path = key_path.as_ref();
 
     if cert_path.exists() && key_path.exists() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(key_path, std::fs::Permissions::from_mode(0o600))?;
+        }
         return Ok(());
     }
 
@@ -103,13 +108,14 @@ fn write_key_file(path: &Path, data: &[u8]) -> anyhow::Result<()> {
     #[cfg(unix)]
     {
         use std::fs::OpenOptions;
-        use std::os::unix::fs::OpenOptionsExt;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
             .mode(0o600)
             .open(path)?;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
         file.write_all(data)?;
     }
 
@@ -126,22 +132,19 @@ pub fn server_config(
     cert_path: impl AsRef<Path>,
     key_path: impl AsRef<Path>,
 ) -> anyhow::Result<std::sync::Arc<rustls::ServerConfig>> {
+    use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
     use rustls::ServerConfig;
-    use rustls_pemfile::{certs, private_key};
 
     let cert_pem_data = std::fs::read(cert_path.as_ref())
         .with_context(|| format!("read cert {}", cert_path.as_ref().display()))?;
     let key_pem_data = std::fs::read(key_path.as_ref())
         .with_context(|| format!("read key {}", key_path.as_ref().display()))?;
 
-    let cert_chain: Vec<rustls::pki_types::CertificateDer<'static>> =
-        certs(&mut cert_pem_data.as_slice())
-            .collect::<Result<Vec<_>, _>>()
-            .context("parse cert PEM")?;
+    let cert_chain: Vec<CertificateDer<'static>> = CertificateDer::pem_slice_iter(&cert_pem_data)
+        .collect::<Result<Vec<_>, _>>()
+        .context("parse cert PEM")?;
 
-    let key = private_key(&mut key_pem_data.as_slice())
-        .context("parse key PEM")?
-        .context("no private key found in key PEM")?;
+    let key = PrivateKeyDer::from_pem_slice(&key_pem_data).context("parse key PEM")?;
 
     let cfg = ServerConfig::builder()
         .with_no_client_auth()
@@ -182,7 +185,13 @@ mod tests {
             "cert PEM should contain BEGIN CERTIFICATE"
         );
 
-        // Second call: should be a no-op (files unchanged).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+
+        // Second call: preserve the cert/key contents and tighten key mode.
         ensure_cert(&cert, &key, &[]).expect("second ensure_cert call failed");
 
         let cert_pem_2 = std::fs::read_to_string(&cert).unwrap();
@@ -193,5 +202,13 @@ mod tests {
             "cert should not change on second call"
         );
         assert_eq!(key_pem_1, key_pem_2, "key should not change on second call");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&key).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
     }
 }

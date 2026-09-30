@@ -72,9 +72,10 @@ already_published() {
 
 # Block until <name>@<version> is queryable on crates.io (post-publish indexing).
 wait_for_index() {
-  local name="$1" ver="$2" i
-  for i in $(seq 1 30); do
+  local name="$1" ver="$2" attempt=0
+  while [ "$attempt" -lt 30 ]; do
     already_published "$name" "$ver" && { info "$name@$ver is live on crates.io"; return 0; }
+    attempt=$((attempt + 1))
     sleep 5
   done
   warn "$name@$ver not visible after 150s — continuing anyway"

@@ -176,6 +176,23 @@ pub async fn set_console_pubkey(pool: &SqlitePool, pubkey_b64: &str) -> anyhow::
     Ok(())
 }
 
+/// Pair exactly once, even when two requests present a valid token concurrently.
+pub async fn set_console_pubkey_if_unpaired(
+    pool: &SqlitePool,
+    pubkey_b64: &str,
+) -> anyhow::Result<bool> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let result = sqlx::query(
+        "UPDATE server_config SET console_public_key=?, paired_at=?
+         WHERE id=1 AND console_public_key IS NULL",
+    )
+    .bind(pubkey_b64)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() == 1)
+}
+
 /// Returns `true` if a console public key has been registered (server is paired).
 pub async fn is_paired(pool: &SqlitePool) -> anyhow::Result<bool> {
     let key = get_console_pubkey(pool).await?;
@@ -233,6 +250,26 @@ pub async fn log_command(pool: &SqlitePool, entry: &CommandLogEntry) -> anyhow::
     .bind(&entry.created_at)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+/// Complete a previously recorded command attempt with its result or error.
+pub async fn finish_command_log(
+    pool: &SqlitePool,
+    id: &str,
+    exit: Option<i64>,
+    output: &str,
+) -> anyhow::Result<()> {
+    let result = sqlx::query("UPDATE command_log SET exit=?, output=? WHERE id=?")
+        .bind(exit)
+        .bind(output)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    anyhow::ensure!(
+        result.rows_affected() == 1,
+        "command audit row missing: {id}"
+    );
     Ok(())
 }
 
@@ -294,32 +331,43 @@ pub async fn list_audit(
 /// Add a revocation entry (idempotent — INSERT OR IGNORE).
 pub async fn add_revocation(pool: &SqlitePool, id: &str) -> anyhow::Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
+    let mut tx = pool.begin().await?;
     sqlx::query("INSERT OR IGNORE INTO revocations (machine_id, revoked_at) VALUES (?,?)")
         .bind(id)
         .bind(&now)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+    sqlx::query("UPDATE machines SET status='revoked' WHERE id=?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
     Ok(())
 }
 
-/// Delete a machine and all its dependent rows (snapshots, command_log, revocations).
+/// Remove a machine's visible records while retaining a revocation tombstone.
+/// Otherwise a previously issued identity token could recreate the machine.
 pub async fn delete_machine(pool: &SqlitePool, id: &str) -> anyhow::Result<()> {
+    let mut tx = pool.begin().await?;
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query("INSERT OR IGNORE INTO revocations (machine_id, revoked_at) VALUES (?,?)")
+        .bind(id)
+        .bind(&now)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM status_snapshots WHERE machine_id = ?")
         .bind(id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     sqlx::query("DELETE FROM command_log WHERE machine_id = ?")
         .bind(id)
-        .execute(pool)
-        .await?;
-    sqlx::query("DELETE FROM revocations WHERE machine_id = ?")
-        .bind(id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     sqlx::query("DELETE FROM machines WHERE id = ?")
         .bind(id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     Ok(())
 }
 
@@ -383,16 +431,23 @@ mod tests {
         log_command(&pool, &e1).await.unwrap();
         log_command(&pool, &e2).await.unwrap();
 
+        finish_command_log(&pool, "cmd-2", Some(1), "updated result")
+            .await
+            .unwrap();
+
         // list_audit returns 2 entries, newest first
         let rows = list_audit(&pool, Some("m-shell"), 100).await.unwrap();
         assert_eq!(rows.len(), 2, "expected 2 audit rows");
         assert_eq!(rows[0].id, "cmd-2", "expected newest first");
         assert_eq!(rows[1].id, "cmd-1");
+        assert_eq!(rows[0].exit, Some(1));
+        assert_eq!(rows[0].output, "updated result");
 
         // add_revocation + is_revoked
         assert!(!is_revoked(&pool, "m-shell").await.unwrap());
         add_revocation(&pool, "m-shell").await.unwrap();
         assert!(is_revoked(&pool, "m-shell").await.unwrap());
+        assert_eq!(list_machines(&pool).await.unwrap()[0].status, "revoked");
 
         // Idempotent — second call must not error
         add_revocation(&pool, "m-shell").await.unwrap();
@@ -428,6 +483,7 @@ mod tests {
             list_machines(&pool).await.unwrap().is_empty(),
             "machine row should be gone"
         );
+        assert!(is_revoked(&pool, "m-del").await.unwrap());
     }
 
     #[tokio::test]

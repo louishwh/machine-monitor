@@ -7,12 +7,11 @@
 ///   3. Assert shell-disabled → 403, then enable → run-shell → 200 with stdout "hi".
 ///   4. Assert GET /api/audit contains the shell entry.
 ///   5. POST revoke → assert the fake agent's WS gets closed / Reject frame.
-
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
-use fw_proto::token::{sign_identity, IdentityPayload};
 use futures_util::{SinkExt, StreamExt};
+use fw_proto::token::{sign_identity, IdentityPayload};
 use tokio_tungstenite::tungstenite::Message;
 
 const MACHINE_ID: &str = "m-shell-flow";
@@ -20,7 +19,12 @@ const MACHINE_ID: &str = "m-shell-flow";
 /// Build a signed GET request.
 fn signed_get(sk: &SigningKey, addr: &str, path: &str, query: &str) -> reqwest::RequestBuilder {
     let ts = Utc::now().to_rfc3339();
-    let sig = fw_proto::auth::sign_request(sk, "GET", path, &ts, b"");
+    let request_target = if query.is_empty() {
+        path.to_string()
+    } else {
+        format!("{path}?{query}")
+    };
+    let sig = fw_proto::auth::sign_request(sk, "GET", &request_target, &ts, b"");
     let url = if query.is_empty() {
         format!("http://{addr}{path}")
     } else {
@@ -35,7 +39,12 @@ fn signed_get(sk: &SigningKey, addr: &str, path: &str, query: &str) -> reqwest::
 /// Build a signed POST request.
 /// The body JSON is serialized once and used both for the signature and for
 /// the actual request body so they match exactly.
-fn signed_post(sk: &SigningKey, addr: &str, path: &str, body: serde_json::Value) -> reqwest::RequestBuilder {
+fn signed_post(
+    sk: &SigningKey,
+    addr: &str,
+    path: &str,
+    body: serde_json::Value,
+) -> reqwest::RequestBuilder {
     let body_str = serde_json::to_string(&body).unwrap();
     let body_bytes = body_str.as_bytes();
     let ts = Utc::now().to_rfc3339();
@@ -49,7 +58,12 @@ fn signed_post(sk: &SigningKey, addr: &str, path: &str, body: serde_json::Value)
 }
 
 /// Build a signed PATCH request.
-fn signed_patch(sk: &SigningKey, addr: &str, path: &str, body: serde_json::Value) -> reqwest::RequestBuilder {
+fn signed_patch(
+    sk: &SigningKey,
+    addr: &str,
+    path: &str,
+    body: serde_json::Value,
+) -> reqwest::RequestBuilder {
     let body_str = serde_json::to_string(&body).unwrap();
     let body_bytes = body_str.as_bytes();
     let ts = Utc::now().to_rfc3339();
@@ -107,19 +121,33 @@ async fn shell_flow_full() {
     let shell_path = format!("/api/machines/{MACHINE_ID}/shell");
     let run_path = format!("/api/machines/{MACHINE_ID}/run-shell");
 
-    let status = signed_post(&sk, &addr, &run_path, serde_json::json!({"command": "echo hi"}))
-        .send()
-        .await
-        .unwrap()
-        .status();
+    let status = signed_post(
+        &sk,
+        &addr,
+        &run_path,
+        serde_json::json!({"command": "echo hi"}),
+    )
+    .send()
+    .await
+    .unwrap()
+    .status();
     assert_eq!(status.as_u16(), 403, "expected 403 when shell is disabled");
 
     // ── Test 2: enable shell → run-shell → 200 with stdout "hi" ─────────────
-    let patch_resp = signed_patch(&sk, &addr, &shell_path, serde_json::json!({"enabled": true}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(patch_resp.status().as_u16(), 200, "expected 200 from PATCH shell");
+    let patch_resp = signed_patch(
+        &sk,
+        &addr,
+        &shell_path,
+        serde_json::json!({"enabled": true}),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(
+        patch_resp.status().as_u16(),
+        200,
+        "expected 200 from PATCH shell"
+    );
 
     // Spawn a task that drives the fake-agent side: read RunShell, reply CommandResult.
     // We need the ws to stay alive across the revoke test as well, so we use a
@@ -186,27 +214,20 @@ async fn shell_flow_full() {
     assert_eq!(resp["exit"], 0);
 
     // Wait for the agent task to have handled the RunShell (with timeout).
-    tokio::time::timeout(
-        tokio::time::Duration::from_secs(5),
-        agent_done_rx.recv(),
-    )
-    .await
-    .expect("agent task did not handle RunShell in time");
+    tokio::time::timeout(tokio::time::Duration::from_secs(5), agent_done_rx.recv())
+        .await
+        .expect("agent task did not handle RunShell in time");
 
     // ── Test 3: GET /api/audit contains the shell entry ──────────────────────
-    let audit_path = format!("/api/audit");
-    let audit: serde_json::Value = signed_get(
-        &sk,
-        &addr,
-        &audit_path,
-        &format!("machine_id={MACHINE_ID}"),
-    )
-    .send()
-    .await
-    .unwrap()
-    .json()
-    .await
-    .unwrap();
+    let audit_path = "/api/audit";
+    let audit: serde_json::Value =
+        signed_get(&sk, &addr, audit_path, &format!("machine_id={MACHINE_ID}"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
 
     let arr = audit.as_array().expect("audit should be an array");
     assert!(!arr.is_empty(), "audit should contain at least one entry");
@@ -224,16 +245,41 @@ async fn shell_flow_full() {
         .send()
         .await
         .unwrap();
-    assert_eq!(revoke_resp.status().as_u16(), 200, "expected 200 from revoke");
+    assert_eq!(
+        revoke_resp.status().as_u16(),
+        200,
+        "expected 200 from revoke"
+    );
 
     // The agent task should terminate (ws closed or Reject received) within 2 s.
-    tokio::time::timeout(
-        tokio::time::Duration::from_secs(2),
-        agent_task,
+    tokio::time::timeout(tokio::time::Duration::from_secs(2), agent_task)
+        .await
+        .expect("agent task did not terminate after revoke within timeout")
+        .expect("agent task panicked");
+
+    // A failed dispatch is still recorded as an attempted shell command.
+    let failed_status = signed_post(
+        &sk,
+        &addr,
+        &run_path,
+        serde_json::json!({"command":"echo after revoke"}),
     )
+    .send()
     .await
-    .expect("agent task did not terminate after revoke within timeout")
-    .expect("agent task panicked");
+    .unwrap()
+    .status();
+    assert_eq!(failed_status.as_u16(), 502);
+    let audit: serde_json::Value =
+        signed_get(&sk, &addr, audit_path, &format!("machine_id={MACHINE_ID}"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+    assert_eq!(audit.as_array().unwrap().len(), 2);
+    assert_eq!(audit[0]["request"], "echo after revoke");
+    assert!(audit[0]["exit"].is_null());
 }
 
 /// Ensure unsigned requests to admin endpoints are rejected.

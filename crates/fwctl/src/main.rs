@@ -35,8 +35,12 @@ enum Cmd {
     Pair {
         #[arg(long)]
         server: String,
+        /// Legacy non-interactive path; visible in process arguments.
         #[arg(long)]
-        pairing_token: String,
+        pairing_token: Option<String>,
+        /// Read the one-time pairing token from a hidden terminal prompt.
+        #[arg(long, conflicts_with = "pairing_token")]
+        pairing_token_prompt: bool,
         /// Path to server CA PEM (for https:// with self-signed cert)
         #[arg(long)]
         server_ca: Option<String>,
@@ -73,7 +77,7 @@ enum Cmd {
         #[arg(long)]
         server_ca: Option<String>,
     },
-    /// Delete offline machines from the server (cleanup stale records)
+    /// Delete offline machines and revoke their old identity tokens
     Prune {
         #[arg(long)]
         server: String,
@@ -145,8 +149,7 @@ async fn signed_delete(
     Ok(())
 }
 
-/// Signed control-plane GET. `sign_path` is the path WITHOUT query string
-/// (the server verifies over `uri.path()`); `query` is appended to the URL only.
+/// Signed control-plane GET. The full path and query are signed together.
 async fn signed_get(
     client: &reqwest::Client,
     server: &str,
@@ -155,7 +158,8 @@ async fn signed_get(
     sk: &SigningKey,
 ) -> Result<serde_json::Value> {
     let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-    let sig = fw_proto::auth::sign_request(sk, "GET", sign_path, &ts, b"");
+    let request_target = format!("{sign_path}{query}");
+    let sig = fw_proto::auth::sign_request(sk, "GET", &request_target, &ts, b"");
     let url = format!("{}{}{}", server.trim_end_matches('/'), sign_path, query);
     let resp = client
         .get(&url)
@@ -183,17 +187,22 @@ async fn main() -> Result<()> {
                 );
             }
             if let Some(dir) = kp.parent() {
-                std::fs::create_dir_all(dir)?;
+                if !dir.as_os_str().is_empty() {
+                    std::fs::create_dir_all(dir)?;
+                }
             }
             let mut seed = [0u8; 32];
             rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut seed);
             let sk = SigningKey::from_bytes(&seed);
-            std::fs::write(&kp, B64.encode(seed))?;
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create_new(true);
             #[cfg(unix)]
             {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&kp, std::fs::Permissions::from_mode(0o600)).ok();
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
             }
+            use std::io::Write as _;
+            options.open(&kp)?.write_all(B64.encode(seed).as_bytes())?;
             println!("已生成主密钥：{}", kp.display());
             println!("公钥(base64)：{}", pubkey_b64(&sk));
         }
@@ -204,8 +213,21 @@ async fn main() -> Result<()> {
         Cmd::Pair {
             server,
             pairing_token,
+            pairing_token_prompt,
             server_ca,
         } => {
+            let pairing_token = if pairing_token_prompt {
+                rpassword::prompt_password("Server pairing token: ")?
+                    .trim()
+                    .to_string()
+            } else {
+                pairing_token.ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "provide --pairing-token-prompt (recommended) or --pairing-token"
+                    )
+                })?
+            };
+            anyhow::ensure!(!pairing_token.is_empty(), "pairing token must not be empty");
             let sk = load_key(&kp)?;
             let client = http(server_ca.as_deref())?;
             let body = serde_json::json!({
@@ -240,8 +262,10 @@ async fn main() -> Result<()> {
             } else {
                 &server
             };
+            let quoted_srv = format!("'{}'", srv.replace('\'', "'\\''"));
             println!("\n# 在目标机执行：");
-            println!("sudo fleetwatch-agent enroll --server {srv} --identity '{token}'");
+            println!("sudo fleetwatch-agent enroll --server {quoted_srv} --identity-prompt");
+            println!("# Paste the token above when prompted; input is hidden.");
         }
         Cmd::List { server, server_ca } => {
             let sk = load_key(&kp)?;
@@ -284,7 +308,7 @@ async fn main() -> Result<()> {
                 signed_delete(&client, &server, &path, &sk).await?;
                 pruned += 1;
             }
-            println!("pruned {pruned} offline machines (kept {kept} online)");
+            println!("pruned {pruned} machines and revoked their identities (kept {kept} online)");
         }
     }
     Ok(())

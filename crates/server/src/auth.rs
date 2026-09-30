@@ -16,8 +16,7 @@ use crate::AppState;
 ///   x-fw-timestamp  — RFC3339 timestamp (must be within ±300 s of now)
 ///   x-fw-signature  — base64-encoded Ed25519 signature
 ///
-/// Signed canonical form: `method\npath\ntimestamp\nSHA256(body)`
-/// (path = `uri.path()`, i.e. without the query string)
+/// Signed canonical form: `method\npath-and-query\ntimestamp\nSHA256(body)`.
 pub async fn require_console_sig(
     State(st): State<AppState>,
     req: Request<Body>,
@@ -60,7 +59,11 @@ pub async fn require_console_sig(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let method = parts.method.as_str();
-    let path = parts.uri.path(); // does NOT include query string
+    let path = parts
+        .uri
+        .path_and_query()
+        .map(|value| value.as_str())
+        .unwrap_or_else(|| parts.uri.path());
 
     fw_proto::auth::verify_request(&pubkey, method, path, &ts_str, &bytes, &sig_str)
         .map_err(|_| StatusCode::UNAUTHORIZED)?;

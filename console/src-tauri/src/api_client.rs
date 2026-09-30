@@ -2,10 +2,9 @@
 //!
 //! All control-plane GETs include:
 //!   `x-fw-timestamp`  — RFC 3339 timestamp
-//!   `x-fw-signature`  — base64 ed25519 signature over canonical(method|path|ts|body_hash)
+//!   `x-fw-signature`  — base64 ed25519 signature over canonical(method|path-and-query|ts|body_hash)
 //!
-//! `signed_get` always signs the **path without the query string** so the
-//! server middleware can verify using `uri.path()`.
+//! `signed_get` signs the full path and query string, matching the request target.
 //!
 //! `signed_post` / `signed_patch` serialise the body JSON **once**, sign over
 //! those exact bytes, and send those exact bytes as the request body — so that
@@ -63,23 +62,16 @@ pub async fn pair(
 
 /// Perform a signed GET request.
 ///
-/// The signature is computed over the **path** only (no query string),
-/// matching what the server middleware verifies via `uri.path()`.
-///
-/// `path` should be the full path including any query string, e.g.
-/// `/api/machines/abc/status?kind=host`.  The function splits the query off
-/// before signing so the header carries only the signed path component.
+/// `path` includes the query string, if present, e.g.
+/// `/api/machines/abc/status?kind=host`.
 pub async fn signed_get(
     server: &str,
     path: &str,
     sk: &SigningKey,
     ca_pem: Option<&str>,
 ) -> AppResult<Value> {
-    // Split path from query string; sign only the path component.
-    let (sign_path, _query) = path.split_once('?').unwrap_or((path, ""));
-
     let ts = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-    let sig = fw_proto::auth::sign_request(sk, "GET", sign_path, &ts, b"");
+    let sig = fw_proto::auth::sign_request(sk, "GET", path, &ts, b"");
 
     let url = format!("{server}{path}");
     let client = build_client(ca_pem)?;

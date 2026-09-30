@@ -13,6 +13,8 @@ RestartSec=5
 User=fleetwatch
 Group=fleetwatch
 StateDirectory=fleetwatch
+StateDirectoryMode=0700
+UMask=0077
 WorkingDirectory=/var/lib/fleetwatch
 
 [Install]

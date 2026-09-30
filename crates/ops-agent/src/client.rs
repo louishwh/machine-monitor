@@ -43,7 +43,8 @@ impl Client {
 
     async fn signed_get(&self, sign_path: &str, query: &str) -> Result<serde_json::Value> {
         let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-        let sig = fw_proto::auth::sign_request(&self.key, "GET", sign_path, &ts, b"");
+        let request_target = format!("{sign_path}{query}");
+        let sig = fw_proto::auth::sign_request(&self.key, "GET", &request_target, &ts, b"");
         let url = format!("{}{}{}", self.server, sign_path, query);
         let resp = self
             .http

@@ -8,8 +8,12 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::time::Duration;
 
-pub async fn list_machines(State(st): State<AppState>) -> Json<Value> {
-    let machines = store::list_machines(&st.pool).await.unwrap_or_default();
+pub async fn list_machines(
+    State(st): State<AppState>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let machines = store::list_machines(&st.pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let mut out = Vec::new();
     for m in machines {
         let online = st.registry.is_online(&m.id).await;
@@ -32,7 +36,7 @@ pub async fn list_machines(State(st): State<AppState>) -> Json<Value> {
             "summary": summary
         }));
     }
-    Json(Value::Array(out))
+    Ok(Json(Value::Array(out)))
 }
 
 #[derive(Deserialize)]
@@ -59,6 +63,9 @@ pub async fn get_machine_status(
             ),
         ));
     }
+    if q.kind == "service" && q.arg.as_deref().is_none_or(|arg| arg.trim().is_empty()) {
+        return Err((StatusCode::BAD_REQUEST, "service kind requires arg".into()));
+    }
 
     let cmd_id = uuid::Uuid::new_v4().to_string();
     let msg = ServerToAgent::RunStatus {
@@ -71,9 +78,21 @@ pub async fn get_machine_status(
         .await
         .map_err(|e| (StatusCode::BAD_GATEWAY, format!("dispatch failed: {e}")))?;
 
-    // Parse stdout as JSON; fall back to wrapping it in a string field.
-    let detail: Value =
-        serde_json::from_str(&result.stdout).unwrap_or_else(|_| json!({ "raw": result.stdout }));
+    if result.exit != 0 {
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("agent status collector failed: {}", result.stderr),
+        ));
+    }
+    let detail: Value = serde_json::from_str(&result.stdout).map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("agent returned invalid status JSON: {e}"),
+        )
+    })?;
+    if let Some(error) = detail.get("error") {
+        return Err((StatusCode::BAD_GATEWAY, error.to_string()));
+    }
 
     // Persist the snapshot asynchronously — ignore errors (best-effort).
     let _ = store::save_snapshot(&st.pool, &id, &q.kind, &result.stdout).await;
@@ -91,17 +110,19 @@ fn default_limit() -> i64 {
     50
 }
 
-/// DELETE /api/machines/:id — remove machine and all its dependent rows.
-/// Also kicks any live WebSocket connection and removes from the in-memory registry.
+/// DELETE /api/machines/:id — remove visible records and retain a revocation
+/// tombstone so the old identity cannot recreate the machine.
+/// Also kicks any live WebSocket connection and removes it from the registry.
 pub async fn delete_machine(
     State(st): State<AppState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    // Best-effort: disconnect any live agent connection and remove from registry.
-    st.conns.kick(&id).await;
-    st.registry.mark_offline(&id).await;
     match store::delete_machine(&st.pool, &id).await {
-        Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))),
+        Ok(_) => {
+            st.conns.kick(&id).await;
+            st.registry.mark_offline(&id).await;
+            (StatusCode::OK, Json(json!({"ok": true})))
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": e.to_string()})),
@@ -115,6 +136,9 @@ pub async fn list_machine_snapshots(
     Query(q): Query<SnapshotsQuery>,
     State(st): State<AppState>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
+    if !(1..=1000).contains(&q.limit) {
+        return Err((StatusCode::BAD_REQUEST, "limit must be 1..=1000".into()));
+    }
     let snaps = store::list_snapshots(&st.pool, &id, q.limit)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

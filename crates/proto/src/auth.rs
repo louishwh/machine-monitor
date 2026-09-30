@@ -42,5 +42,25 @@ mod tests {
         let sig = sign_request(&sk, "GET", "/api/machines", ts, b"");
         assert!(verify_request(vk.as_bytes(), "GET", "/api/machines", ts, b"", &sig).is_ok());
         assert!(verify_request(vk.as_bytes(), "POST", "/api/machines", ts, b"", &sig).is_err());
+
+        let query_sig = sign_request(&sk, "GET", "/api/machines/m-1/status?kind=cpu", ts, b"");
+        assert!(verify_request(
+            vk.as_bytes(),
+            "GET",
+            "/api/machines/m-1/status?kind=cpu",
+            ts,
+            b"",
+            &query_sig
+        )
+        .is_ok());
+        assert!(verify_request(
+            vk.as_bytes(),
+            "GET",
+            "/api/machines/m-1/status?kind=mem",
+            ts,
+            b"",
+            &query_sig
+        )
+        .is_err());
     }
 }

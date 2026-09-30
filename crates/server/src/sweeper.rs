@@ -1,10 +1,10 @@
 use crate::{registry::Registry, store, AppState};
 
 pub async fn sweep_once(reg: &Registry, timeout_secs: i64) {
-    let now = chrono::Utc::now();
+    let cutoff = chrono::Utc::now() - chrono::Duration::seconds(timeout_secs);
     for (id, seen) in reg.snapshot().await {
-        if (now - seen).num_seconds() > timeout_secs {
-            reg.mark_offline(&id).await;
+        if seen < cutoff {
+            reg.mark_offline_if_older(&id, cutoff).await;
         }
     }
 }

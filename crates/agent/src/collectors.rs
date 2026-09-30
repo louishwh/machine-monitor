@@ -23,9 +23,14 @@ pub fn collect_summary() -> StatusSummary {
         0.0
     };
 
-    // Use the first non-removable disk as the "root" disk proxy.
+    // Prefer the actual root filesystem. Enumeration order is not stable, and
+    // the first non-removable disk can be a separate data volume.
     let disks = Disks::new_with_refreshed_list();
-    let root = disks.list().iter().find(|d| !d.is_removable());
+    let root = disks
+        .list()
+        .iter()
+        .find(|d| d.mount_point() == std::path::Path::new("/"))
+        .or_else(|| disks.list().iter().find(|d| !d.is_removable()));
     let disk_total = root.map(|d| d.total_space()).unwrap_or(0);
     let disk_pct = root
         .map(|d| {
@@ -219,7 +224,7 @@ fn collect_service(arg: Option<String>) -> Value {
 
 fn try_systemctl(svc: &str) -> Option<String> {
     let out = std::process::Command::new("systemctl")
-        .args(["is-active", svc])
+        .args(["is-active", "--", svc])
         .output()
         .ok()?;
     // systemctl exits non-zero for inactive, but stdout still has the state string.
@@ -238,10 +243,10 @@ fn try_launchctl(svc: &str) -> Option<String> {
         .output()
         .ok()?;
     let stdout = String::from_utf8_lossy(&out.stdout);
-    // Look for a line whose label column contains the service name.
+    // Match the exact label; substring matches can report the wrong service.
     for line in stdout.lines() {
         let cols: Vec<&str> = line.splitn(3, '\t').collect();
-        if cols.len() == 3 && cols[2].contains(svc) {
+        if cols.len() == 3 && cols[2] == svc {
             // PID == "-" means not running; a number means running.
             let running = cols[0] != "-";
             return Some(if running { "active" } else { "inactive" }.into());
