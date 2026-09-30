@@ -62,4 +62,17 @@ else
     echo "Pages certificate is $certificate_state; enable HTTPS enforcement when it is approved."
 fi
 
+environment_endpoint="repos/$repo/environments/github-pages"
+if ! gh api "$environment_endpoint" --jq .name > /dev/null 2>&1 ||
+   [ "$(gh api "$environment_endpoint" --jq '.deployment_branch_policy.custom_branch_policies')" != true ]; then
+    gh api -X PUT "$environment_endpoint" --input - > /dev/null <<'JSON'
+{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}
+JSON
+fi
+policy_endpoint="$environment_endpoint/deployment-branch-policies"
+tag_policy="$(gh api "$policy_endpoint" --jq '.branch_policies[] | select(.name == "v*" and .type == "tag") | .id')"
+if [ -z "$tag_policy" ]; then
+    gh api -X POST "$policy_endpoint" -f name='v*' -f type=tag > /dev/null
+fi
+
 echo "Signing and GitHub Pages setup are ready for $repo."

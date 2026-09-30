@@ -88,7 +88,8 @@ the crates.io section above.
   The script creates a dedicated Ed25519 signing key in
   `~/.config/fleetwatch/apt-signing/gnupg`, stores its private key in the
   `GPG_PRIVATE_KEY` Actions secret, and enables GitHub Pages with GitHub Actions
-  as its publishing source. Back up the local key directory securely; GitHub
+  as its publishing source, enforces HTTPS once its certificate is ready, and
+  permits `v*` tags to deploy to the `github-pages` environment. Back up the local key directory securely; GitHub
   secrets cannot be read back. The `apt-repo` job fails without this secret.
 - **`HOMEBREW_TAP_TOKEN` secret** — a GitHub PAT (fine-grained, contents:write)
   on a public `louishwh/homebrew-tap` repo. Create the repo once

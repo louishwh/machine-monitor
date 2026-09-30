@@ -142,7 +142,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -l artifacts
-          gh release create "$GITHUB_REF_NAME" artifacts/* \
+          gh release create "$GITHUB_REF_NAME" artifacts/*.deb artifacts/*.dmg \
+            --repo "$GITHUB_REPOSITORY" \
             --title "FleetWatch $GITHUB_REF_NAME" --generate-notes
 
   apt-repo:
