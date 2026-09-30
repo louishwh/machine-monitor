@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release automation now uploads only `.deb` and `.dmg` files with explicit
   repository context, and configures the `github-pages` environment to accept
   version tags on first setup.
+- The Homebrew cask now lives in this source repository and is updated by the
+  release workflow, with no separate tap repository or PAT.
 
 ## [0.1.1] - 2026-09-30
 

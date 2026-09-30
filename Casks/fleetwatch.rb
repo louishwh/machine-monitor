@@ -4,10 +4,10 @@
 #   brew tap louishwh/fleetwatch https://github.com/louishwh/machine-monitor
 #   brew install --cask louishwh/fleetwatch/fleetwatch
 cask "fleetwatch" do
-  version "@VERSION@"
-  sha256 "@SHA256@"
+  version "0.1.1"
+  sha256 "e06f8fea874624c298e2f6a3d08eb67220b78dac51293aec02f9790dfc3c94f5"
 
-  url "@URL@"
+  url "https://github.com/louishwh/machine-monitor/releases/download/v0.1.1/FleetWatch_0.1.1_universal.dmg"
   name "FleetWatch"
   desc "Desktop manager for the FleetWatch machine fleet"
   homepage "https://github.com/louishwh/machine-monitor"

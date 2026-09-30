@@ -3,10 +3,8 @@
 # regenerates the signed APT repo on this repository's gh-pages branch,
 # explicitly deploys it to GitHub Pages, and updates the cask.
 #
-# Required secrets (run scripts/setup-apt-publishing.sh; see RELEASING.md):
+# Required secret (run scripts/setup-apt-publishing.sh; see RELEASING.md):
 #   GPG_PRIVATE_KEY      — release signing key; the apt-repo job FAILS without it
-#   HOMEBREW_TAP_TOKEN   — PAT with contents:write on louishwh/homebrew-tap;
-#                          the tap job warns and skips without it
 # Optional secrets (unsigned/ad-hoc app build when absent):
 #   APPLE_SIGNING_IDENTITY, APPLE_API_ISSUER, APPLE_API_KEY_ID, APPLE_API_KEY
 name: release
@@ -245,24 +243,28 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-  homebrew-tap:
+  homebrew-cask:
     needs: [github-release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
-      - name: Check tap token
-        id: check
-        env:
-          FW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: dmg
+          path: dmg
+
+      - name: Update Homebrew cask in this repository
         run: |
-          if [ -z "$FW_TAP_TOKEN" ]; then
-            echo "::warning::HOMEBREW_TAP_TOKEN not set — skipping cask update. brew users stay on the previous version. See RELEASING.md → One-time setup."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Update Homebrew cask
-        if: steps.check.outputs.skip != 'true'
-        env:
-          FW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: ./scripts/publish-tap.sh "$GITHUB_REF_NAME"
+          ./scripts/update-homebrew-cask.sh "$GITHUB_REF_NAME" dmg/*.dmg
+          git config user.name "fleetwatch-release-bot"
+          git config user.email "actions@github.com"
+          git add Casks/fleetwatch.rb
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "homebrew: fleetwatch $GITHUB_REF_NAME"
+          git pull --rebase origin main
+          git push origin HEAD:main

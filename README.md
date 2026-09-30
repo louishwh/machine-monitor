@@ -79,7 +79,8 @@ full deployment ordering.
 **macOS — desktop console:**
 
 ```bash
-brew install louishwh/tap/fleetwatch
+brew tap louishwh/fleetwatch https://github.com/louishwh/machine-monitor
+brew install --cask louishwh/fleetwatch/fleetwatch
 ```
 
 Unless the release was signed and notarized (see `RELEASING.md`), macOS

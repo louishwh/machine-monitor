@@ -75,8 +75,10 @@ sudo packaging/macos/install-macos.sh \
 
 ## PC 管理端（Tauri，操作者的 Mac）
 
-用户安装：`brew install louishwh/tap/fleetwatch`（release workflow 自动更新
-cask；cask 模板在 `packaging/homebrew/Casks/fleetwatch.rb`）。
+用户安装：先运行
+`brew tap louishwh/fleetwatch https://github.com/louishwh/machine-monitor`，
+再运行 `brew install --cask louishwh/fleetwatch/fleetwatch`。Cask 位于本仓库
+`Casks/fleetwatch.rb`，release workflow 会自动更新。
 
 本地构建：
 

@@ -62,10 +62,10 @@ which does everything automatically:
    deploys it to `https://blog.louishwh.tech/machine-monitor/`. Old versions stay in the pool,
    so downgrades remain installable. `install.sh` on that site configures the
    public key and source on a new Ubuntu machine.
-5. **Homebrew cask** — [`scripts/publish-tap.sh`](scripts/publish-tap.sh) fills
-   [`packaging/homebrew/Casks/fleetwatch.rb`](packaging/homebrew/Casks/fleetwatch.rb)
-   with the new version/sha256/URL and pushes it to `louishwh/homebrew-tap`.
-   Skipped with a warning if `HOMEBREW_TAP_TOKEN` is not configured.
+5. **Homebrew cask** — [`scripts/update-homebrew-cask.sh`](scripts/update-homebrew-cask.sh)
+   calculates the DMG checksum and updates [`Casks/fleetwatch.rb`](Casks/fleetwatch.rb)
+   on this same repository's `main` branch using the workflow's scoped GitHub
+   token. No second repository or personal access token is needed.
 
 ### Release steps
 
@@ -89,14 +89,10 @@ the crates.io section above.
   `~/.config/fleetwatch/apt-signing/gnupg`, stores its private key in the
   `GPG_PRIVATE_KEY` Actions secret, and enables GitHub Pages with GitHub Actions
   as its publishing source, enforces HTTPS once its certificate is ready, and
-  permits `v*` tags to deploy to the `github-pages` environment. Back up the local key directory securely; GitHub
-  secrets cannot be read back. The `apt-repo` job fails without this secret.
-- **`HOMEBREW_TAP_TOKEN` secret** — a GitHub PAT (fine-grained, contents:write)
-  on a public `louishwh/homebrew-tap` repo. Create the repo once
-  (`gh repo create louishwh/homebrew-tap --public`); the cask is committed by
-  CI, you never edit it by hand. The token is also used to read the release
-  assets. Until the first tagged release deploys signed metadata, the APT URL
-  may return 404.
+  permits `v*` tags to deploy to the `github-pages` environment. Back up the
+  local key directory securely; GitHub secrets cannot be read back. The
+  `apt-repo` job fails without this secret. Until the first tagged release
+  deploys signed metadata, the APT URL may return 404.
 - **Optional `APPLE_*` secrets** for signed/notarized console builds:
   `APPLE_SIGNING_IDENTITY` ("Developer ID Application: …"),
   `APPLE_API_ISSUER`, `APPLE_API_KEY_ID`, `APPLE_API_KEY` (the .p8 contents).
@@ -106,12 +102,13 @@ the crates.io section above.
 
 - apt source: `https://blog.louishwh.tech/machine-monitor` (public key at
   `/gpg.key`, Ubuntu installer at `/install.sh`)
-- brew cask: `brew install louishwh/tap/fleetwatch`
+- brew cask: `brew tap louishwh/fleetwatch https://github.com/louishwh/machine-monitor`,
+  then `brew install --cask louishwh/fleetwatch/fleetwatch`
 - release assets: `https://github.com/louishwh/machine-monitor/releases/tag/vX.Y.Z`
 
 If the GitHub repo is renamed (currently `machine-monitor`), update the URLs in
 `README.md`, `RELEASING.md`, `.github/workflows/release.yml`,
-`scripts/publish-tap.sh` (or set `FW_SOURCE_REPO`), and `Cargo.toml`
+`scripts/update-homebrew-cask.sh`, and `Cargo.toml`
 `repository` fields.
 
 ## The console app (macOS)
