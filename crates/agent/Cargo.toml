@@ -1,6 +1,6 @@
 [package]
 name = "fleetwatch-agent"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "FleetWatch monitoring agent — reverse-connects to the central server"
 license.workspace = true
@@ -36,6 +36,8 @@ chrono = { workspace = true }
 tokio-tungstenite = { version = "0.24", features = ["connect", "rustls-tls-native-roots"] }
 futures-util = "0.3"
 toml = "0.8"
+url = "2"
+tempfile = "3"
 clap = { version = "4", features = ["derive"] }
 rpassword = "7.5"
 tracing = "0.1"
@@ -46,7 +48,6 @@ tokio-rustls = "0.26"
 
 [dev-dependencies]
 rcgen = "0.13"
-tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

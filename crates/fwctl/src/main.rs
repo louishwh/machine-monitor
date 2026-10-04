@@ -45,11 +45,11 @@ enum Cmd {
         #[arg(long)]
         server_ca: Option<String>,
     },
-    /// Issue a machine identity token (prints token + the enroll command)
+    /// Issue a machine identity token (prints token + the Ubuntu install command)
     Issue {
         #[arg(long)]
         name: String,
-        /// The server URL agents should connect to (for the printed enroll cmd)
+        /// The server URL agents should connect to (for the printed install command)
         #[arg(long, default_value = "")]
         server: String,
         /// Reuse an existing machine_id (rename in place / re-issue) instead of
@@ -264,7 +264,12 @@ async fn main() -> Result<()> {
             };
             let quoted_srv = format!("'{}'", srv.replace('\'', "'\\''"));
             println!("\n# 在目标机执行：");
-            println!("sudo fleetwatch-agent enroll --server {quoted_srv} --identity-prompt");
+            let insecure = if srv.starts_with("ws://") || srv.starts_with("http://") {
+                " --allow-insecure"
+            } else {
+                ""
+            };
+            println!("curl -fsSL https://blog.louishwh.tech/machine-monitor/install.sh | sudo sh -s -- agent --server {quoted_srv}{insecure}");
             println!("# Paste the token above when prompted; input is hidden.");
         }
         Cmd::List { server, server_ca } => {

@@ -1,4 +1,5 @@
 use crate::config::AgentConfig;
+use anyhow::Context as _;
 use futures_util::{SinkExt, StreamExt};
 use fw_proto::messages::{AgentToServer, ServerToAgent};
 use std::sync::Arc;
@@ -269,10 +270,11 @@ type Sink = Arc<
     >,
 >;
 
-async fn connect_once(
-    cfg: &AgentConfig,
-    heartbeat_interval: Duration,
-) -> anyhow::Result<SessionEnd> {
+type Socket =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// Use the same TLS and Hello path for enrollment checks and normal sessions.
+async fn open_session(cfg: &AgentConfig) -> anyhow::Result<Socket> {
     let (mut ws, _) = if cfg.server_url.starts_with("wss://") {
         if let Some(pem) = &cfg.server_ca_pem {
             let connector = build_tls_connector(pem)?;
@@ -298,6 +300,50 @@ async fn connect_once(
     };
     ws.send(Message::Text(serde_json::to_string(&hello)?))
         .await?;
+    Ok(ws)
+}
+
+pub async fn verify_connection(cfg: &AgentConfig) -> anyhow::Result<()> {
+    verify_connection_with_timeout(cfg, Duration::from_secs(15)).await
+}
+
+async fn verify_connection_with_timeout(
+    cfg: &AgentConfig,
+    timeout: Duration,
+) -> anyhow::Result<()> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    tokio::time::timeout(timeout, async {
+        let mut ws = open_session(cfg).await?;
+        while let Some(frame) = ws.next().await {
+            match frame? {
+                Message::Text(text) => match serde_json::from_str::<ServerToAgent>(&text)? {
+                    ServerToAgent::HelloAck { ok: true } => {
+                        let _ = ws.close(None).await;
+                        return Ok(());
+                    }
+                    ServerToAgent::HelloAck { ok: false } => {
+                        anyhow::bail!("server declined this machine's identity")
+                    }
+                    ServerToAgent::Reject { reason } => {
+                        anyhow::bail!("server rejected enrollment: {reason}")
+                    }
+                    _ => {}
+                },
+                Message::Close(_) => break,
+                _ => {}
+            }
+        }
+        anyhow::bail!("server closed the connection before accepting this identity")
+    })
+    .await
+    .context("server enrollment check timed out after 15 seconds")?
+}
+
+async fn connect_once(
+    cfg: &AgentConfig,
+    heartbeat_interval: Duration,
+) -> anyhow::Result<SessionEnd> {
+    let ws = open_session(cfg).await?;
 
     // Split the socket so command handlers run as independent tasks: a 30s
     // shell used to block this loop, stalling heartbeats and delaying
@@ -306,19 +352,13 @@ async fn connect_once(
     let sink: Sink = Arc::new(tokio::sync::Mutex::new(sink));
 
     let mut hb = tokio::time::interval(heartbeat_interval);
+    hb.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut commands = tokio::task::JoinSet::new();
     let end = loop {
         tokio::select! {
-            _ = hb.tick() => {
-                let summary = tokio::task::spawn_blocking(crate::collectors::collect_summary)
-                    .await
-                    .ok();
-                let m = AgentToServer::Heartbeat { summary };
-                if let Err(e) = send_msg(&sink, &m).await {
-                    tracing::debug!(error=%e, "heartbeat send failed");
-                    break SessionEnd::Closed;
-                }
-            }
+            // Slow collectors can leave a heartbeat tick overdue. Read pending
+            // server messages first so rejection is not delayed by catch-up work.
+            biased;
             msg = stream.next() => {
                 let Some(msg) = msg else { break SessionEnd::Closed };
                 let msg = match msg {
@@ -370,13 +410,26 @@ async fn connect_once(
                     Ok(ServerToAgent::HelloAck { ok: false }) => {
                         break SessionEnd::Rejected("server declined agent handshake".into());
                     }
+                    Ok(ServerToAgent::HelloAck { ok: true }) => {
+                        tracing::info!("server accepted this agent's identity");
+                    }
                     Ok(ServerToAgent::Reject { reason }) => break SessionEnd::Rejected(reason),
-                    Ok(_) | Err(_) => {}
+                    Err(_) => {}
                 }
             }
             finished = commands.join_next(), if !commands.is_empty() => {
                 if let Some(Err(e)) = finished {
                     tracing::warn!(error=%e, "agent command task failed");
+                }
+            }
+            _ = hb.tick() => {
+                let summary = tokio::task::spawn_blocking(crate::collectors::collect_summary)
+                    .await
+                    .ok();
+                let m = AgentToServer::Heartbeat { summary };
+                if let Err(e) = send_msg(&sink, &m).await {
+                    tracing::debug!(error=%e, "heartbeat send failed");
+                    break SessionEnd::Closed;
                 }
             }
         }
@@ -408,6 +461,70 @@ fn hostname() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn probe_server(
+        reply: Option<ServerToAgent>,
+    ) -> (AgentConfig, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let cfg = AgentConfig {
+            server_url: format!("ws://{}/agent", listener.local_addr().unwrap()),
+            identity_token: "test-identity".into(),
+            server_ca_pem: None,
+        };
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+            let hello = ws.next().await.unwrap().unwrap().into_text().unwrap();
+            assert!(
+                matches!(serde_json::from_str::<AgentToServer>(&hello).unwrap(), AgentToServer::Hello { identity_token, .. } if identity_token == "test-identity")
+            );
+            if let Some(reply) = reply {
+                ws.send(Message::Text(serde_json::to_string(&reply).unwrap()))
+                    .await
+                    .unwrap();
+            }
+            while let Some(Ok(frame)) = ws.next().await {
+                if matches!(frame, Message::Close(_)) {
+                    break;
+                }
+            }
+        });
+        (cfg, server)
+    }
+
+    #[tokio::test]
+    async fn enrollment_check_waits_for_identity_acceptance() {
+        let (cfg, server) = probe_server(Some(ServerToAgent::HelloAck { ok: true })).await;
+        verify_connection(&cfg).await.unwrap();
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn enrollment_check_rejects_invalid_identity() {
+        let (cfg, server) = probe_server(Some(ServerToAgent::Reject {
+            reason: "revoked".into(),
+        }))
+        .await;
+        assert!(verify_connection(&cfg)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("revoked"));
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn enrollment_check_has_a_handshake_deadline() {
+        let (cfg, server) = probe_server(None).await;
+        assert!(
+            verify_connection_with_timeout(&cfg, Duration::from_millis(100))
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("timed out")
+        );
+        server.await.unwrap();
+    }
 
     #[cfg(unix)]
     async fn wait_for_pid(path: &std::path::Path) -> u32 {

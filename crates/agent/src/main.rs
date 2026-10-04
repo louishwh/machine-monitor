@@ -4,10 +4,10 @@ mod config;
 
 use anyhow::Context as _;
 use clap::{Parser, Subcommand};
-use std::io::Write as _;
+use std::io::Read as _;
 
 #[derive(Parser)]
-#[command(name = "fleetwatch-agent")]
+#[command(name = "fleetwatch-agent", version)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -28,8 +28,14 @@ enum Cmd {
         #[arg(long)]
         identity: Option<String>,
         /// Read the identity token from a hidden terminal prompt.
-        #[arg(long, conflicts_with = "identity")]
+        #[arg(long, conflicts_with_all = ["identity", "identity_file"])]
         identity_prompt: bool,
+        /// Read the identity token from a file for unattended installation.
+        #[arg(long, conflicts_with_all = ["identity", "identity_prompt"])]
+        identity_file: Option<String>,
+        /// Verify the server accepts this identity before saving configuration.
+        #[arg(long)]
+        check: bool,
         #[arg(long, default_value = "/etc/fleetwatch/agent.toml")]
         config: String,
         /// Path to server CA PEM file (for wss:// with self-signed cert).
@@ -42,6 +48,7 @@ enum Cmd {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
+    let _ = rustls::crypto::ring::default_provider().install_default();
     match Cli::parse().cmd {
         Cmd::Run { config } => {
             let cfg = config::AgentConfig::load(&config)?;
@@ -51,6 +58,8 @@ async fn main() -> anyhow::Result<()> {
             server,
             identity,
             identity_prompt,
+            identity_file,
+            check,
             config,
             server_ca,
         } => {
@@ -58,42 +67,36 @@ async fn main() -> anyhow::Result<()> {
                 rpassword::prompt_password("Machine identity token: ")?
                     .trim()
                     .to_string()
+            } else if let Some(path) = identity_file {
+                let mut value = String::new();
+                std::fs::File::open(&path)
+                    .with_context(|| format!("failed to read identity file: {path}"))?
+                    .take(65_537)
+                    .read_to_string(&mut value)?;
+                anyhow::ensure!(value.len() <= 65_536, "identity file exceeds 64 KiB");
+                value.trim().to_string()
             } else {
                 identity.ok_or_else(|| {
-                    anyhow::anyhow!("provide --identity-prompt (recommended) or --identity")
+                    anyhow::anyhow!("provide --identity-prompt (recommended) or --identity-file")
                 })?
             };
-            anyhow::ensure!(!identity.is_empty(), "identity token must not be empty");
-            let mut body = format!("server_url = \"{server}\"\nidentity_token = \"{identity}\"\n");
-            if let Some(ca_path) = server_ca {
-                let pem = std::fs::read_to_string(&ca_path)
-                    .with_context(|| format!("failed to read --server-ca file: {ca_path}"))?;
-                // TOML literal multi-line string ('''…''') needs no escaping.
-                // PEM contains only base64, newlines, and "-----…-----" headers — no '''.
-                body.push_str(&format!("server_ca_pem = '''\n{pem}'''\n"));
+            let server_ca_pem = server_ca
+                .map(|path| {
+                    std::fs::read_to_string(&path)
+                        .with_context(|| format!("failed to read --server-ca file: {path}"))
+                })
+                .transpose()?;
+            let cfg = config::AgentConfig {
+                server_url: server,
+                identity_token: identity,
+                server_ca_pem,
+            };
+            cfg.validate()?;
+            if check {
+                client::verify_connection(&cfg).await?;
+                println!("Server accepted this machine's identity.");
             }
-            let path = std::path::Path::new(&config);
-            if let Some(p) = path.parent() {
-                if !p.as_os_str().is_empty() {
-                    std::fs::create_dir_all(p)?;
-                }
-            }
-            let mut options = std::fs::OpenOptions::new();
-            options.write(true).create(true).truncate(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-                options.mode(0o600);
-                let mut file = options.open(path)?;
-                // Existing enrollment files may have been created with mode 0644.
-                // Tighten the opened file before writing the new identity token.
-                file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
-                file.write_all(body.as_bytes())?;
-            }
-            #[cfg(not(unix))]
-            {
-                options.open(path)?.write_all(body.as_bytes())?;
-            }
+            cfg.save(&config)?;
             println!("Written to {config}");
         }
     }

@@ -291,3 +291,14 @@ jobs:
           git commit -m "homebrew: fleetwatch $GITHUB_REF_NAME"
           git pull --rebase origin main
           git push origin HEAD:main
+
+  agent-bootstrap:
+    name: Ubuntu Agent one-line install
+    needs: [apt-pages]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bootstrap verification tools
+        run: sudo apt-get update && sudo apt-get install -y curl python3-cryptography
+      - name: Verify public installer and systemd startup
+        run: sudo env GITHUB_ACTIONS=true GITHUB_REF_NAME="$GITHUB_REF_NAME" python3 scripts/smoke-agent-bootstrap.py

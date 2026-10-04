@@ -2,7 +2,7 @@
 
 [package]
 name = "fleetwatch-console"
-version = "0.1.1"
+version = "0.1.2"
 description = "FleetWatch PC 管理端"
 authors = ["louis"]
 edition = "2021"

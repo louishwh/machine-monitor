@@ -46,7 +46,7 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-function IssueMachineModal({ onClose, serverUrl }: { onClose: () => void; serverUrl: string }) {
+function IssueMachineModal({ onClose, serverUrl, serverCa }: { onClose: () => void; serverUrl: string; serverCa: string | null }) {
   const toast = useToast();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -78,12 +78,17 @@ function IssueMachineModal({ onClose, serverUrl }: { onClose: () => void; server
     );
   }
 
-  const enrollCmd = issued
-    ? `sudo fleetwatch-agent enroll --server ${shellQuote(agentWebSocketUrl(serverUrl))} --identity-prompt`
+  const agentUrl = agentWebSocketUrl(serverUrl);
+  // Copy public certificate blocks only; never include a private key that may
+  // have been accidentally pasted into the profile's PEM field.
+  const publicCa = (serverCa?.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? []).join("\n");
+  const caOption = publicCa ? ` --server-ca-base64 ${shellQuote(btoa(publicCa))}` : "";
+  const installCmd = issued
+    ? `curl -fsSL https://blog.louishwh.tech/machine-monitor/install.sh | sudo sh -s -- agent --server ${shellQuote(agentUrl)}${caOption}${agentUrl.startsWith("ws://") ? " --allow-insecure" : ""}`
     : "";
 
   function copyCmd() {
-    navigator.clipboard.writeText(enrollCmd).then(
+    navigator.clipboard.writeText(installCmd).then(
       () => toast("ok", "命令已复制"),
       () => toast("err", "复制失败，请手动复制")
     );
@@ -133,18 +138,18 @@ function IssueMachineModal({ onClose, serverUrl }: { onClose: () => void; server
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="label">运维注册命令</label>
+              <label className="label">Ubuntu 一行安装并启动</label>
               <button className="btn-ghost text-xs py-0.5 px-2" onClick={copyCmd}>
                 复制
               </button>
             </div>
             <div className="rounded-lg bg-slate-900 border border-slate-700 p-2.5 font-mono text-xs text-slate-400 break-all">
-              {enrollCmd}
+              {installCmd}
             </div>
           </div>
 
           <p className="text-xs text-slate-500">
-            在目标机器上执行命令，再将上方令牌粘贴到隐藏输入提示中。命令和 Shell 历史不会包含令牌。
+            在 Ubuntu 目标机器上执行命令，将上方令牌粘贴到隐藏提示中。脚本会安装、验证连接并启动服务，开机自动运行。{publicCa ? "命令已包含管理端信任的服务器公开证书。" : "自签名服务器需追加 --server-ca 证书路径。"}
           </p>
 
           <button className="btn-ghost w-full" onClick={onClose}>
@@ -571,6 +576,7 @@ export default function MachinesPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [serverUrl, setServerUrl] = useState("");
+  const [serverCa, setServerCa] = useState<string | null>(null);
   const [showIssue, setShowIssue] = useState(false);
   const [detailMachine, setDetailMachine] = useState<Machine | null>(null);
   const [terminalMachine, setTerminalMachine] = useState<Machine | null>(null);
@@ -589,7 +595,10 @@ export default function MachinesPage() {
 
   useEffect(() => {
     getActiveServer()
-      .then((profile) => setServerUrl(profile?.url ?? ""))
+      .then((profile) => {
+        setServerUrl(profile?.url ?? "");
+        setServerCa(profile?.ca ?? null);
+      })
       .catch(() => {});
   }, []);
 
@@ -676,7 +685,7 @@ export default function MachinesPage() {
 
       {/* Modals */}
       {showIssue && (
-        <IssueMachineModal onClose={() => setShowIssue(false)} serverUrl={serverUrl} />
+        <IssueMachineModal onClose={() => setShowIssue(false)} serverUrl={serverUrl} serverCa={serverCa} />
       )}
       {detailMachine && (
         <MachineDetailModal

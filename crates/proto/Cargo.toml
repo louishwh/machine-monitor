@@ -1,6 +1,6 @@
 [package]
 name = "fw-proto"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "FleetWatch wire protocol + ed25519 auth/token primitives shared by the server, agents, and console"
 license.workspace = true

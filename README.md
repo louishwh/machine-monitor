@@ -49,19 +49,28 @@ machine needs the repository configured once; later installs and upgrades use
 **Ubuntu — agent (each monitored machine):**
 
 ```bash
-curl -fsSLO https://blog.louishwh.tech/machine-monitor/install.sh
-sudo sh install.sh agent
+curl -fsSL https://blog.louishwh.tech/machine-monitor/install.sh | sudo sh -s -- agent
 ```
 
-The script installs the repository public key under `/etc/apt/keyrings`, adds
-the signed APT source, runs `apt-get update`, and installs `fleetwatch-agent`.
-To configure only the source, run `sudo sh install.sh repo`; then
-`sudo apt-get install fleetwatch-agent` works normally.
+This single command configures the signed APT source, installs the Agent,
+asks for the server address and a console-issued identity token (hidden input),
+checks that the server accepts the identity, and starts the service with boot
+autostart. No manual config editing or separate service command is needed.
+The console's *issue machine* dialog copies this command with the server URL
+already filled in. Requires `curl`, `sudo` and a running systemd Ubuntu host.
+If the console trusts a self-signed server certificate, its generated command
+includes the public certificate automatically.
 
-The service is enabled but not started on install — set `server_url` +
-`identity_token` in `/etc/fleetwatch/agent.toml` (from the console's
-*issue machine* step or `fwctl issue`), then
-`sudo systemctl start fleetwatch-agent`.
+For unattended deployment, save the identity token in a private file:
+
+```bash
+curl -fsSL https://blog.louishwh.tech/machine-monitor/install.sh | sudo sh -s -- agent --server https://mon.example.com --identity-file /secure/machine-token
+```
+
+For a self-signed server, add `--server-ca /path/to/server.pem`; certificate
+verification remains enabled. Use `agent --install-only` to install the package
+without enrollment. `repo` mode only configures APT; later package upgrades
+use `apt-get` normally.
 
 **Ubuntu — server (one central host):**
 

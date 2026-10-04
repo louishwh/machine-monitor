@@ -2,11 +2,31 @@
 
 ## 在线安装（推荐）
 
-在全新 Ubuntu 主机上，安装脚本会配置仓库公钥与 APT 软件源，并安装指定包：
+在 Ubuntu 的被监控主机上，一行即可安装、注册并启动 Agent：
+
+```bash
+curl -fsSL https://blog.louishwh.tech/machine-monitor/install.sh | sudo sh -s -- agent
+```
+
+按提示填写服务地址、粘贴管理端签发的令牌。令牌输入不可见，脚本会检查服务器
+是否接受身份，再写入私有配置并启动服务，开机自动运行。需要已安装 curl、sudo
+且运行 systemd 的 Ubuntu 主机。管理端「签发机器」可直接复制已填好服务地址的命令；
+若管理端已信任服务器的自签名证书，命令也会自动包含该公开证书。
+
+无交互部署可使用令牌文件：
+
+```bash
+curl -fsSL https://blog.louishwh.tech/machine-monitor/install.sh | sudo sh -s -- agent --server https://mon.example.com --identity-file /secure/machine-token
+```
+
+自签名服务追加 `--server-ca /path/to/server.pem`。只安装 Agent 包可加
+`--install-only`；容器环境也使用此模式，由容器进程管理器启动。
+
+安装中心服务端：
 
 ```bash
 curl -fsSLO https://blog.louishwh.tech/machine-monitor/install.sh
-sudo sh install.sh server  # 中心服务端，或改为 agent
+sudo sh install.sh server
 ```
 
 只配置软件源可运行 `sudo sh install.sh repo`。此后可直接使用

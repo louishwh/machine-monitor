@@ -13,8 +13,8 @@ if [ "$1" = "configure" ]; then
         systemctl daemon-reload || true
         systemctl enable fleetwatch-agent.service || true
         echo "FleetWatch agent installed."
-        echo "Next: edit /etc/fleetwatch/agent.toml (set server_url + identity_token),"
-        echo "      then: systemctl start fleetwatch-agent"
+        echo "The one-line installer completes enrollment and startup automatically."
+        echo "For a manual package install, enroll with fleetwatch-agent before starting the service."
     fi
 fi
 

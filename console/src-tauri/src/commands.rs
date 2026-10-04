@@ -35,7 +35,7 @@ pub struct IssuedMachine {
 }
 
 /// Sign a machine identity token.  The token can be handed to the machine
-/// operator who passes it to `fleetwatch-agent enroll --identity <token>`.
+/// operator who supplies it through the installer's hidden enrollment prompt.
 #[tauri::command]
 pub fn issue_machine(name: String) -> Result<IssuedMachine, AppError> {
     let sk = master_key::load()?;

@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-04
+
+### Added
+- Ubuntu one-command Agent installation with hidden or file-based token input,
+  an authenticated server check, service startup and boot autostart.
+- The console and fwctl now generate the complete Ubuntu install command.
+- Agent enrollment writes escaped TOML atomically with mode 0600; a failed
+  connection check preserves the previous configuration.
+
 ### Fixed
+- Pending server messages take priority over overdue heartbeat collection,
+  keeping identity rejection responsive under collector load.
 - macOS release signing imports the Developer ID private key into a temporary
   runner keychain, validates complete credentials, passes the notarization Key
   ID under Tauri's expected variable and checks Gatekeeper before publishing.

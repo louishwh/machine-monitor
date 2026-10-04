@@ -876,7 +876,7 @@ dependencies = [
 
 [[package]]
 name = "fleetwatch-console"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -1022,7 +1022,7 @@ dependencies = [
 
 [[package]]
 name = "fw-proto"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
  "chrono",
