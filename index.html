@@ -15,15 +15,19 @@
   </head>
   <body>
     <h1>FleetWatch Ubuntu 安装</h1>
-    <p>下载仓库配置脚本。脚本会安装此 APT 仓库的公钥、配置软件源，然后安装所选软件包。</p>
+    <p>Agent 一行完成安装、注册、连接验证和启动，开机自动运行。需要 Ubuntu、curl、sudo 和 systemd。</p>
     <h2>安装 Agent</h2>
-    <pre><code>curl -fsSLO https://blog.louishwh.tech/machine-monitor/install.sh
-sudo sh install.sh agent</code></pre>
+    <pre><code>curl -fsSL https://blog.louishwh.tech/machine-monitor/install.sh | sudo sh -s -- agent</code></pre>
+    <p>按提示输入服务地址，将管理端签发的身份令牌粘贴到隐藏提示中。无需手动编辑配置或另行启动服务。</p>
+    <p>管理端「签发机器」可复制已填好地址的一行命令；已信任的自签名服务器公开证书也会自动包含。</p>
+    <p>无交互部署：先把令牌保存到仅当前用户可读的文件，再运行：</p>
+    <pre><code>curl -fsSL https://blog.louishwh.tech/machine-monitor/install.sh | sudo sh -s -- agent --server https://mon.example.com --identity-file /secure/machine-token</code></pre>
+    <p>自签名服务请追加 <code>--server-ca /path/to/server.pem</code>；只安装软件包可加 <code>--install-only</code>。</p>
     <h2>安装中心服务</h2>
     <pre><code>curl -fsSLO https://blog.louishwh.tech/machine-monitor/install.sh
 sudo sh install.sh server</code></pre>
     <p>只配置软件源：<code>sudo sh install.sh repo</code>。配置后可直接运行 <code>sudo apt-get install fleetwatch-agent</code> 或 <code>sudo apt-get install fleetwatch-server</code>，后续升级也由 APT 管理。</p>
-    <p>Agent 安装后仍需配置管理端签发的身份令牌；中心服务安装后需设置配对码，再启动服务。仓库公钥可在 <a href="gpg.key">gpg.key</a> 查看。</p>
+    <p>中心服务安装后需设置配对码，再启动服务。仓库公钥可在 <a href="gpg.key">gpg.key</a> 查看。</p>
     <p><a href="architecture.html">查看系统架构图</a></p>
   </body>
 </html>
